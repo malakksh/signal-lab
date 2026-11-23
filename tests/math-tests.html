@@ -1,0 +1,1872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Signal Lab: math tests</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0a0f1f; color: #e8ecff; padding: 24px; }
+    .pass { color: #34d399; } .fail { color: #f87171; font-weight: bold; }
+    h2 { margin-top: 28px; }
+  </style>
+</head>
+<body>
+  <h1>Signal Lab: math tests</h1>
+  <p id="summary"></p>
+  <div id="results"></div>
+
+  <script src="../js/core/namespace.js"></script>
+  <script src="../js/core/signals.js"></script>
+  <script src="../js/core/plotHelpers.js"></script>
+
+  <script src="../js/modules/generator/generator.math.js"></script>
+  <script src="../js/modules/operations/operations.math.js"></script>
+  <script src="../js/modules/evenodd/evenodd.math.js"></script>
+  <script src="../js/modules/periodicity/periodicity.math.js"></script>
+  <script src="../js/modules/convolution/convolution.math.js"></script>
+
+  <script>
+
+    let passed = 0, failed = 0;
+    const out = document.getElementById("results");
+
+    function section(title) { out.insertAdjacentHTML("beforeend", "<h2>" + title + "</h2>"); }
+
+    // Numbers are compared with a small tolerance, because computers round decimals.
+    function check(name, actual, expected) {
+      const ok = Math.abs(actual - expected) < 1e-9;
+      ok ? passed++ : failed++;
+      out.insertAdjacentHTML("beforeend",
+        '<div class="' + (ok ? "pass" : "fail") + '">' + (ok ? "PASS" : "FAIL") +
+        ": " + name + (ok ? "" : " (got " + actual + ", expected " + expected + ")") + "</div>");
+    }
+
+    // For yes/no questions: checkTrue("name", someCondition)
+    function checkTrue(name, condition) {
+      condition ? passed++ : failed++;
+      out.insertAdjacentHTML("beforeend",
+        '<div class="' + (condition ? "pass" : "fail") + '">' + (condition ? "PASS" : "FAIL") + ": " + name + "</div>");
+    }
+
+    const S = SignalLab.signals;
+
+    section("Core: time axis");
+    const axis = S.makeTimeAxis(0, 1, 0.25);
+    check("axis has 5 points", axis.length, 5);
+    check("axis last value is 1", axis[4], 1);
+    check("axis has no rounding noise (0.3 stays 0.3)", S.makeTimeAxis(0, 0.3, 0.1)[3], 0.3);
+    check("index axis -2..2 has 5 points", S.makeIndexAxis(-2, 2).length, 5);
+
+    section("Core: sine and cosine");
+    check("sin(0) = 0", S.sine([0], 1, 1, 0)[0], 0);
+    check("sine peak: A=2, f=1, t=0.25 -> 2", S.sine([0.25], 2, 1, 0)[0], 2);
+    check("sine with phase pi/2 equals cosine", S.sine([0.1], 1, 1, Math.PI / 2)[0], S.cosine([0.1], 1, 1, 0)[0]);
+    check("cos(0) = A", S.cosine([0], 3, 5, 0)[0], 3);
+
+    section("Core: square wave");
+    check("square at t=0.1 (first half) = +A", S.square([0.1], 2, 1, 0)[0], 2);
+    check("square at t=0.7 (second half) = -A", S.square([0.7], 2, 1, 0)[0], -2);
+    check("square repeats after one period", S.square([1.1], 2, 1, 0)[0], 2);
+    check("square works for negative time (t=-0.3 -> -A)", S.square([-0.3], 1, 1, 0)[0], -1);
+
+    section("Core: generate()");
+    check("generate('cosine') matches cosine()", S.generate("cosine", [0.2], { amplitude: 1, frequency: 1, phase: 0 })[0], S.cosine([0.2], 1, 1, 0)[0]);
+
+    const G = SignalLab.math.generator;
+    const PI = Math.PI;
+
+    section("Generator: sine (amplitude, frequency, phase)");
+    check("A=2, f=1: x(0.25) = 2 (peak)",           S.generate("sine", [0.25], { amplitude: 2, frequency: 1, phase: 0 })[0], 2);
+    check("A=2, f=1: x(0.5) = 0 (zero crossing)",   S.generate("sine", [0.5],  { amplitude: 2, frequency: 1, phase: 0 })[0], 0);
+    check("A=2, f=1: x(0.75) = -2 (trough)",        S.generate("sine", [0.75], { amplitude: 2, frequency: 1, phase: 0 })[0], -2);
+    check("f=2: x(0.125) = A (peak comes twice as soon)", S.generate("sine", [0.125], { amplitude: 1.5, frequency: 2, phase: 0 })[0], 1.5);
+    check("phase pi/2: x(0) = A (sine turns into cosine)", S.generate("sine", [0], { amplitude: 3, frequency: 1, phase: PI / 2 })[0], 3);
+    check("phase pi: x(0.25) = -A (flipped wave)",  S.generate("sine", [0.25], { amplitude: 2, frequency: 1, phase: PI })[0], -2);
+    check("doubling A doubles the value",           S.generate("sine", [0.1], { amplitude: 2, frequency: 3, phase: 0.4 })[0],
+                                                    2 * S.generate("sine", [0.1], { amplitude: 1, frequency: 3, phase: 0.4 })[0]);
+    check("positive phase shifts LEFT: x_phi(t) = x(t + phi/(2*pi*f))",
+          S.generate("sine", [0.3], { amplitude: 1, frequency: 2, phase: 0.8 })[0],
+          S.generate("sine", [0.3 + 0.8 / (2 * PI * 2)], { amplitude: 1, frequency: 2, phase: 0 })[0]);
+
+    section("Generator: cosine");
+    check("A=2: x(0) = 2",                          S.generate("cosine", [0],   { amplitude: 2, frequency: 1, phase: 0 })[0], 2);
+    check("A=2, f=1: x(0.25) = 0",                  S.generate("cosine", [0.25], { amplitude: 2, frequency: 1, phase: 0 })[0], 0);
+    check("A=2, f=1: x(0.5) = -2",                  S.generate("cosine", [0.5], { amplitude: 2, frequency: 1, phase: 0 })[0], -2);
+    check("cos(theta) = sin(theta + pi/2)",         S.generate("cosine", [0.37], { amplitude: 1, frequency: 2, phase: 0.3 })[0],
+                                                    S.generate("sine",   [0.37], { amplitude: 1, frequency: 2, phase: 0.3 + PI / 2 })[0]);
+
+    section("Generator: square = A * sign(sin(...))");
+    let signMismatches = 0, checkedPoints = 0;
+    [[1, 0], [1.3, 0.7], [2.5, -1.1], [4, 2]].forEach(function (pair) {
+      const f = pair[0], phi = pair[1];
+      for (let k = 0; k < 200; k++) {
+        const t = -1.003 + k * 0.01371;
+        const s = Math.sin(2 * PI * f * t + phi);
+        if (Math.abs(s) < 1e-6) { continue; }                 // skip the exact jump points
+        checkedPoints++;
+        const squareValue = S.generate("square", [t], { amplitude: 2.5, frequency: f, phase: phi })[0];
+        if (squareValue !== 2.5 * Math.sign(s)) { signMismatches++; }
+      }
+    });
+    check("matches A*sign(sin) at " + checkedPoints + " points (0 mismatches)", signMismatches, 0);
+    check("A=2, phase pi/2 (starts positive): x(0.1) = 2", S.generate("square", [0.1], { amplitude: 2, frequency: 1, phase: PI / 2 })[0], 2);
+    check("phase pi flips the square wave: x(0.1) = -2",   S.generate("square", [0.1], { amplitude: 2, frequency: 1, phase: PI })[0], -2);
+
+    section("Generator: periodicity x(t + T) = x(t), T = 1/f");
+    ["sine", "cosine", "square"].forEach(function (type) {
+      let worst = 0;
+      for (let k = 0; k < 50; k++) {
+        const t = 0.0123 + k * 0.0371;
+        const p = { amplitude: 1.7, frequency: 2.5, phase: 0.6 };
+        const a = S.generate(type, [t], p)[0];
+        const b = S.generate(type, [t + G.getPeriod(2.5)], p)[0];
+        worst = Math.max(worst, Math.abs(a - b));
+      }
+      check(type + ": repeats after one period (largest difference)", worst, 0);
+    });
+    check("getPeriod(2) = 0.5", G.getPeriod(2), 0.5);
+    check("countCycles(f=2, -1..1) = 4", G.countCycles(2, -1, 1), 4);
+
+    section("Generator: discrete sampling x[n] = x(t[n])");
+    check("sample spacing: 5 samples over 0..1 -> Ts = 0.25", G.getSamplePeriod(0, 1, 5), 0.25);
+    const dAxis = G.getDiscreteTimeAxis(0, 1, 5);
+    check("discrete axis has N points",             dAxis.length, 5);
+    check("discrete axis starts at start",          dAxis[0], 0);
+    check("discrete axis ends at end",              dAxis[4], 1);
+    check("discrete axis t[3] = 0.75",              dAxis[3], 0.75);
+    const dSine = G.generateSignal({ type: "sine", mode: "discrete", amplitude: 2, frequency: 1, phase: 0, startTime: 0, endTime: 1, numSamples: 5 });
+    [0, 2, 0, -2, 0].forEach(function (expected, i) { check("discrete sine x[" + i + "] = " + expected, dSine.y[i], expected); });
+    check("discrete result reports Ts",             dSine.samplePeriod, 0.25);
+    const dCos = G.generateSignal({ type: "cosine", mode: "discrete", amplitude: 2, frequency: 1, phase: 0, startTime: 0, endTime: 1, numSamples: 5 });
+    [2, 0, -2, 0, 2].forEach(function (expected, i) { check("discrete cosine x[" + i + "] = " + expected, dCos.y[i], expected); });
+    const dSq = G.generateSignal({ type: "square", mode: "discrete", amplitude: 2, frequency: 1, phase: 0, startTime: 0, endTime: 1, numSamples: 5 });
+    [2, 2, -2, -2, 2].forEach(function (expected, i) { check("discrete square x[" + i + "] = " + expected + " (x[2] is the jump: -A convention)", dSq.y[i], expected); });
+    const dOdd = G.generateSignal({ type: "sine", mode: "discrete", amplitude: 1.3, frequency: 0.7, phase: 0.2, startTime: -2, endTime: 3, numSamples: 11 });
+    let worstGap = 0;
+    for (let i = 0; i < dOdd.t.length; i++) {
+      worstGap = Math.max(worstGap, Math.abs(dOdd.y[i] - 1.3 * Math.sin(2 * PI * 0.7 * dOdd.t[i] + 0.2)));
+    }
+    check("discrete samples equal the continuous formula at t[n]", worstGap, 0);
+
+    section("Generator: continuous axis");
+    const cAxis = G.getContinuousTimeAxis(0, 1, 1);
+    check("continuous axis starts at start",        cAxis[0], 0);
+    check("continuous axis ends at end",            cAxis[cAxis.length - 1], 1);
+    check("at least 500 intervals (smooth look)",   cAxis.length - 1, 500);
+    check("200 cycles use 8000 intervals",          G.getContinuousTimeAxis(0, 4, 50).length - 1, 8000);
+    const cSig = G.generateSignal({ type: "sine", mode: "continuous", amplitude: 1, frequency: 1, phase: 0, startTime: 0, endTime: 1 });
+    check("continuous sine peak: max value = A",    Math.max.apply(null, cSig.y), 1);
+    check("continuous sine trough: min value = -A", Math.min.apply(null, cSig.y), -1);
+
+    section("Generator: aliasing (Nyquist)");
+    checkTrue("f=2 Hz, fs=20 Hz: fine",             !G.hasAliasing(2, 0.05));
+    checkTrue("f=10 Hz, fs=20 Hz: exactly fs/2 -> warn", G.hasAliasing(10, 0.05));
+    checkTrue("f=15 Hz, fs=20 Hz: warn",            G.hasAliasing(15, 0.05));
+
+    section("Generator: input validation");
+    const good = { type: "sine", mode: "continuous", amplitude: "1", frequency: "2", phase: "0", startTime: "-1", endTime: "1", numSamples: "41" };
+    function errorFor(changes, key) { return G.validateInputs(Object.assign({}, good, changes)).errors[key]; }
+    checkTrue("default inputs are valid",                  G.validateInputs(good).ok);
+    checkTrue("valid inputs give numbers (not text)",      G.validateInputs(good).values.frequency === 2);
+    checkTrue("amplitude 0 rejected",                      errorFor({ amplitude: "0" }, "amplitude") !== undefined);
+    checkTrue("negative amplitude rejected",               errorFor({ amplitude: "-2" }, "amplitude") !== undefined);
+    checkTrue("amplitude 101 rejected",                    errorFor({ amplitude: "101" }, "amplitude") !== undefined);
+    checkTrue("empty amplitude rejected (not treated as 0)", errorFor({ amplitude: "" }, "amplitude") !== undefined);
+    checkTrue("text amplitude rejected",                   errorFor({ amplitude: "abc" }, "amplitude") !== undefined);
+    checkTrue("frequency 0 rejected",                      errorFor({ frequency: "0" }, "frequency") !== undefined);
+    checkTrue("negative frequency rejected",               errorFor({ frequency: "-1" }, "frequency") !== undefined);
+    checkTrue("too many cycles rejected (f=50 over 100 s)", errorFor({ frequency: "50", startTime: "0", endTime: "100" }, "frequency") !== undefined);
+    checkTrue("negative phase accepted",                   errorFor({ phase: "-3.14" }, "phase") === undefined);
+    checkTrue("huge phase rejected",                       errorFor({ phase: "5000" }, "phase") !== undefined);
+    checkTrue("end time = start time rejected",            errorFor({ startTime: "1", endTime: "1" }, "endTime") !== undefined);
+    checkTrue("end time before start rejected",            errorFor({ startTime: "2", endTime: "1" }, "endTime") !== undefined);
+    checkTrue("time window over 100 s rejected",           errorFor({ startTime: "0", endTime: "101", frequency: "0.1" }, "endTime") !== undefined);
+    checkTrue("text start time rejected",                  errorFor({ startTime: "x" }, "startTime") !== undefined);
+    checkTrue("samples ignored in continuous mode",        errorFor({ numSamples: "abc" }, "numSamples") === undefined);
+    checkTrue("samples = 1 rejected (discrete)",           errorFor({ mode: "discrete", numSamples: "1" }, "numSamples") !== undefined);
+    checkTrue("samples = 2.5 rejected (discrete)",         errorFor({ mode: "discrete", numSamples: "2.5" }, "numSamples") !== undefined);
+    checkTrue("samples = 501 rejected (discrete)",         errorFor({ mode: "discrete", numSamples: "501" }, "numSamples") !== undefined);
+    checkTrue("samples = 2 accepted (discrete)",           errorFor({ mode: "discrete", numSamples: "2" }, "numSamples") === undefined);
+    checkTrue("discrete mode allows high f (aliasing is only a warning)", G.validateInputs(Object.assign({}, good, { mode: "discrete", frequency: "50" })).ok);
+
+    const O = SignalLab.math.operations;
+    function spec(type, A, f, phi) { return { type: type, amplitude: A, frequency: f, phase: phi }; }
+    function checkArray(name, actual, expected) {          // compares two arrays value by value
+      let worst = actual.length === expected.length ? 0 : Infinity;
+      for (let i = 0; i < expected.length && worst !== Infinity; i++) { worst = Math.max(worst, Math.abs(actual[i] - expected[i])); }
+      check(name, worst, 0);
+    }
+    const sin1 = spec("sine", 1, 1, 0), cos1 = spec("cosine", 1, 1, 0);
+    const T = [0, 0.125, 0.25, 0.5, 0.75, 1];
+    function pair(a, b, times) { return [{ t: times, y: O.evaluateSignal(a, times) }, { t: times, y: O.evaluateSignal(b, times) }]; }
+    const SQ2 = Math.SQRT2;
+
+    section("Operations: addition y = x1 + x2");
+    let p = pair(sin1, cos1, T);
+    checkArray("sin + cos at t = 0, 1/8, 1/4, 1/2, 3/4, 1", O.combineSignals("add", p[0], p[1]).y, [1, SQ2, 1, -1, -1, 1]);
+    p = pair(spec("sine", 2, 1, 0), spec("sine", 3, 1, 0), T);
+    checkArray("2 sin + 3 sin = 5 sin (same phase adds up)", O.combineSignals("add", p[0], p[1]).y, T.map(function (t) { return 5 * Math.sin(2 * Math.PI * t); }));
+    p = pair(sin1, spec("sine", 1, 1, Math.PI), T);
+    checkArray("sin + sin shifted by pi = 0 (cancels)", O.combineSignals("add", p[0], p[1]).y, [0, 0, 0, 0, 0, 0]);
+    p = pair(sin1, spec("sine", 0.5, 3, 0.4), T);
+    checkArray("addition is commutative: x1+x2 = x2+x1", O.combineSignals("add", p[0], p[1]).y, O.combineSignals("add", p[1], p[0]).y);
+
+    section("Operations: subtraction y = x1 - x2");
+    p = pair(sin1, cos1, T);
+    checkArray("sin - cos at the same six times", O.combineSignals("subtract", p[0], p[1]).y, [-1, 0, 1, 1, -1, -1]);
+    checkArray("x - x = 0", O.combineSignals("subtract", p[0], p[0]).y, [0, 0, 0, 0, 0, 0]);
+    const d12 = O.combineSignals("subtract", p[0], p[1]).y, d21 = O.combineSignals("subtract", p[1], p[0]).y;
+    checkArray("order matters: x1-x2 = -(x2-x1)", d12, d21.map(function (v) { return -v; }));
+    checkArray("x1 - x2 equals x1 + (-x2)", d12, O.combineSignals("add", p[0], { t: T, y: p[1].y.map(function (v) { return -v; }) }).y);
+
+    section("Operations: multiplication y = x1 * x2");
+    p = pair(sin1, cos1, T);
+    checkArray("sin * cos = 1/2 sin(4 pi t)", O.combineSignals("multiply", p[0], p[1]).y, [0, 0.5, 0, 0, 0, 0]);
+    p = pair(spec("sine", 2, 1, 0), spec("sine", 3, 1, 0), [0.25]);
+    checkArray("peak of the product is A1 * A2 = 6", O.combineSignals("multiply", p[0], p[1]).y, [6]);
+    p = pair(spec("square", 2, 1, 0), spec("sine", 3, 1, 0), [0.25, 0.5, 0.75]);
+    checkArray("square(2) * sine(3) at 1/4, 1/2, 3/4 = 6, 0, 6", O.combineSignals("multiply", p[0], p[1]).y, [6, 0, 6]);
+    const ss = pair(sin1, sin1, T), cc = pair(cos1, cos1, T);
+    const sinSq = O.combineSignals("multiply", ss[0], ss[1]), cosSq = O.combineSignals("multiply", cc[0], cc[1]);
+    checkArray("sin*sin + cos*cos = 1 (identity)", O.combineSignals("add", { t: T, y: sinSq.y }, { t: T, y: cosSq.y }).y, [1, 1, 1, 1, 1, 1]);
+
+    section("Operations: time-axis alignment");
+    const sA = { t: [0, 1, 2, 3, 4], y: [1, 2, 3, 4, 5] };
+    const sB = { t: [2, 3, 4, 5, 6], y: [10, 20, 30, 40, 50] };
+    check("overlap 2..4 keeps 3 points", O.alignSignals(sA, sB).t.length, 3);
+    checkArray("add matches by TIME, not by position: [13, 24, 35]", O.combineSignals("add", sA, sB).y, [13, 24, 35]);
+    checkArray("subtract on the overlap: [-7, -16, -25]", O.combineSignals("subtract", sA, sB).y, [-7, -16, -25]);
+    checkArray("multiply on the overlap: [30, 80, 150]", O.combineSignals("multiply", sA, sB).y, [30, 80, 150]);
+    checkArray("overlap times are 2, 3, 4", O.combineSignals("add", sA, sB).t, [2, 3, 4]);
+    function throws(fn) { try { fn(); return false; } catch (e) { return true; } }
+    checkTrue("no common time points -> error (never interpolates)", throws(function () { O.combineSignals("add", { t: [0, 1], y: [1, 1] }, { t: [0.5, 1.5], y: [1, 1] }); }));
+    checkTrue("0.1 grid vs 0.1 grid offset by 0.05 -> error", throws(function () { O.combineSignals("add", { t: [0, 0.1, 0.2], y: [1, 1, 1] }, { t: [0.05, 0.15, 0.25], y: [1, 1, 1] }); }));
+    check("times equal within rounding (0.3 vs 0.30000000000000004) still match", O.alignSignals({ t: [0.3], y: [1] }, { t: [0.30000000000000004], y: [2] }).t.length, 1);
+    checkTrue("axis not increasing -> error", throws(function () { O.alignSignals({ t: [1, 0], y: [1, 1] }, sA); }));
+    checkTrue("values/time length mismatch -> error", throws(function () { O.alignSignals({ t: [0, 1], y: [1] }, sA); }));
+    checkTrue("unknown combine operation -> error", throws(function () { O.combineSignals("divide", sA, sB); }));
+
+    section("Operations: time shifting y(t) = x(t - t0)");
+    const X = [0, 0.25, 0.5, 0.75, 1];
+    let r = O.applyTimeOperation("shift", sin1, X, 0.25, false);
+    checkArray("t0 = +0.25 (delay): y = sin(2 pi (t - 0.25))", r.y, [-1, 0, 1, 0, -1]);
+    checkArray("t0 = +0.25: reads x at t - 0.25", r.sourceTimes, [-0.25, 0, 0.25, 0.5, 0.75]);
+    r = O.applyTimeOperation("shift", sin1, X, -0.25, false);
+    checkArray("t0 = -0.25 (advance): y = sin(2 pi (t + 0.25))", r.y, [1, 0, -1, 0, 1]);
+    checkArray("t0 = -0.25: reads x at t + 0.25", r.sourceTimes, [0.25, 0.5, 0.75, 1, 1.25]);
+    checkArray("peak of x at t = 0.25 moves to 1.25 when t0 = 1: y(1.25) = 1", O.applyTimeOperation("shift", sin1, [1.25], 1, false).y, [1]);
+    checkArray("t0 = 0 changes nothing", O.applyTimeOperation("shift", spec("sine", 2, 1.5, 0.3), T, 0, false).y, O.evaluateSignal(spec("sine", 2, 1.5, 0.3), T));
+    checkArray("shifting by one period (f=2, t0=0.5) changes nothing", O.applyTimeOperation("shift", spec("sine", 1, 2, 0.7), T, 0.5, false).y, O.evaluateSignal(spec("sine", 1, 2, 0.7), T));
+    checkArray("shift by t0 = phase change of -2 pi f t0", O.applyTimeOperation("shift", spec("sine", 1.5, 2, 0.3), T, 0.2, false).y, O.evaluateSignal(spec("sine", 1.5, 2, 0.3 - 2 * Math.PI * 2 * 0.2), T));
+    checkArray("square shifted by half a period flips sign", O.applyTimeOperation("shift", spec("square", 2, 1, 0), [0.1, 0.3, 0.7, 0.9], 0.5, false).y, [-2, -2, 2, 2]);
+    check("edge of the window is real data, not zero padding: y(0) = -1", O.applyTimeOperation("shift", sin1, [0], 0.25, false).y[0], -1);
+
+    section("Operations: whole-period shifts look identical (why the graph can seem unchanged)");
+    checkTrue("f=1: shift 1 is exactly one period", O.isWholePeriodShift(1, 1));
+    checkTrue("f=1: shift 3 and -2 are whole periods", O.isWholePeriodShift(3, 1) && O.isWholePeriodShift(-2, 1));
+    checkTrue("f=1: shift 0.25 is not a whole period", !O.isWholePeriodShift(0.25, 1));
+    checkTrue("f=1: shift 1.5 is not a whole period", !O.isWholePeriodShift(1.5, 1));
+    checkTrue("f=2 (T=0.5): shift 0.5 and 1.5 are whole periods", O.isWholePeriodShift(0.5, 2) && O.isWholePeriodShift(1.5, 2));
+    checkTrue("shift 0 is no shift, not a 'period shift'", !O.isWholePeriodShift(0, 1));
+    checkTrue("discrete f=0.05: n0 = 20 is one period, n0 = 5 is not", O.isWholePeriodShift(20, 0.05) && !O.isWholePeriodShift(5, 0.05));
+    let sameCurve = 0;                                                   // the math agrees: k whole periods change nothing
+    [1, 2, 3, -1].forEach(function (k) {
+      const base = O.applyTimeOperation("shift", spec("sine", 1.3, 1, 0.4), T, 0, false).y;
+      const moved = O.applyTimeOperation("shift", spec("sine", 1.3, 1, 0.4), T, k, false).y;
+      for (let i = 0; i < base.length; i++) { sameCurve = Math.max(sameCurve, Math.abs(base[i] - moved[i])); }
+    });
+    check("shifting a 1 Hz sine by 1, 2, 3, -1 periods gives the same values", sameCurve, 0);
+    check("but 0.25 changes the values (y(0) is -A*cos...: -1 for a unit sine)", O.applyTimeOperation("shift", sin1, [0], 0.25, false).y[0], -1);
+
+    section("Operations: time scaling y(t) = x(a t)");
+    r = O.applyTimeOperation("scale", sin1, [0, 0.125, 0.25, 0.375, 0.5], 2, false);
+    checkArray("a = 2 (compression): y = sin(4 pi t)", r.y, [0, 1, 0, -1, 0]);
+    checkArray("a = 2: reads x at 2t", r.sourceTimes, [0, 0.25, 0.5, 0.75, 1]);
+    r = O.applyTimeOperation("scale", sin1, [0, 0.5, 1, 1.5, 2], 0.5, false);
+    checkArray("a = 1/2 (expansion): y = sin(pi t)", r.y, [0, 1, 0, -1, 0]);
+    checkArray("a = 1/2: reads x at t/2", r.sourceTimes, [0, 0.25, 0.5, 0.75, 1]);
+    checkArray("a = -2: y(t) = x(-2t) = -sin(4 pi t)", O.applyTimeOperation("scale", sin1, [0, 0.125, 0.25, 0.375, 0.5], -2, false).y, [0, -1, 0, 1, 0]);
+    checkArray("a = 1 changes nothing", O.applyTimeOperation("scale", spec("sine", 2, 1.5, 0.3), T, 1, false).y, O.evaluateSignal(spec("sine", 2, 1.5, 0.3), T));
+    checkArray("a = -1 equals time reversal", O.applyTimeOperation("scale", spec("sine", 1, 1.5, 0.3), [-1, -0.4, 0, 0.7], -1, false).y, O.applyTimeOperation("reverse", spec("sine", 1, 1.5, 0.3), [-1, -0.4, 0, 0.7], 0, false).y);
+    checkArray("phase is NOT scaled: x(2t) = sin(4 pi t + 0.5)", O.applyTimeOperation("scale", spec("sine", 1, 1, 0.5), T, 2, false).y, T.map(function (t) { return Math.sin(4 * Math.PI * t + 0.5); }));
+    let drift = 0;                                                          // compression: period becomes T/|a|
+    for (let k = 0; k < 30; k++) { const t = 0.013 + k * 0.0371; drift = Math.max(drift, Math.abs(O.applyTimeOperation("scale", sin1, [t, t + 0.5], 2, false).y.reduce(function (a, b) { return a - b; }))); }
+    check("a = 2: new period is T/2 = 0.5 (y(t) = y(t + 0.5))", drift, 0);
+    drift = 0;                                                              // expansion: period becomes T/|a| = 2
+    for (let k = 0; k < 30; k++) { const t = 0.013 + k * 0.0371; drift = Math.max(drift, Math.abs(O.applyTimeOperation("scale", sin1, [t, t + 2], 0.5, false).y.reduce(function (a, b) { return a - b; }))); }
+    check("a = 1/2: new period is 2T = 2 (y(t) = y(t + 2))", drift, 0);
+    check("describeScale(2) is compression", O.describeScale(2).effect === "compression" ? 0 : 1, 0);
+    check("describeScale(0.25) is expansion by 4", O.describeScale(0.25).effect === "expansion" && O.describeScale(0.25).factor === 4 ? 0 : 1, 0);
+    check("describeScale(-1): no speed change, reversed", O.describeScale(-1).effect === "none" && O.describeScale(-1).reversed ? 0 : 1, 0);
+
+    section("Operations: time reversal y(t) = x(-t)");
+    const RT = [-1, -0.6, -0.25, 0, 0.25, 0.6, 1];
+    checkArray("cosine is even: x(-t) = x(t)", O.applyTimeOperation("reverse", spec("cosine", 1.5, 1, 0), RT, 0, false).y, O.evaluateSignal(spec("cosine", 1.5, 1, 0), RT));
+    checkArray("sine is odd: x(-t) = -x(t)", O.applyTimeOperation("reverse", spec("sine", 1.5, 1, 0), RT, 0, false).y, O.evaluateSignal(spec("sine", 1.5, 1, 0), RT).map(function (v) { return -v; }));
+    checkArray("sine with phase 0.5: y = sin(-2 pi t + 0.5)", O.applyTimeOperation("reverse", spec("sine", 1, 1, 0.5), RT, 0, false).y, RT.map(function (t) { return Math.sin(-2 * Math.PI * t + 0.5); }));
+    checkArray("reverse reads x at -t", O.applyTimeOperation("reverse", sin1, [0.5, -0.25], 0, false).sourceTimes, [-0.5, 0.25]);
+    const xs = O.evaluateSignal(spec("sine", 1, 1, 0.5), RT);
+    checkArray("on a symmetric axis, y equals x read backwards", O.applyTimeOperation("reverse", spec("sine", 1, 1, 0.5), RT, 0, false).y, xs.slice().reverse());
+    checkArray("square at t=0.25 (x=+1): reversed gives -1", O.applyTimeOperation("reverse", spec("square", 1, 1, 0), [0.25, -0.25], 0, false).y, [-1, 1]);
+
+    section("Operations: discrete signals (no interpolation)");
+    const dSpec = spec("sine", 1, 0.1, 0);
+    const N = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
+    const xN = O.evaluateSignal(dSpec, N);
+    r = O.applyTimeOperation("shift", dSpec, N, 2, true);
+    let shiftGap = 0;
+    for (let i = 2; i < N.length; i++) { shiftGap = Math.max(shiftGap, Math.abs(r.y[i] - xN[i - 2])); }
+    check("shift n0 = 2: y[i] equals the stored sample x[i-2]", shiftGap, 0);
+    checkArray("shift n0 = -3: y[n] = x[n+3]", O.applyTimeOperation("shift", dSpec, N, -3, true).y, N.map(function (n) { return Math.sin(2 * Math.PI * 0.1 * (n + 3)); }));
+    checkTrue("shift by 2.5 is rejected in discrete mode", throws(function () { O.applyTimeOperation("shift", dSpec, N, 2.5, true); }));
+    r = O.applyTimeOperation("scale", dSpec, [-2, -1, 0, 1, 2], 2, true);
+    checkArray("a = 2 (decimation): reads x[-4], x[-2], x[0], x[2], x[4]", r.sourceTimes, [-4, -2, 0, 2, 4]);
+    checkArray("a = 2: y[n] = x[2n] = sin(0.4 pi n)", r.y, [-2, -1, 0, 1, 2].map(function (n) { return Math.sin(0.4 * Math.PI * n); }));
+    r = O.applyTimeOperation("scale", dSpec, [-4, -3, -2, -1, 0, 1, 2, 3, 4], 0.5, true);
+    checkArray("a = 1/2 (expansion): only even n read x[n/2]", r.sourceTimes.map(function (v) { return v === null ? 99 : v; }), [-2, 99, -1, 99, 0, 99, 1, 99, 2]);
+    checkArray("a = 1/2: inserted samples are exactly 0 (not averaged)", [r.y[1], r.y[3], r.y[5], r.y[7]], [0, 0, 0, 0]);
+    checkArray("a = 1/2: even samples keep x[n/2]", [r.y[0], r.y[2], r.y[6], r.y[8]], [-2, -1, 1, 2].map(function (m) { return Math.sin(2 * Math.PI * 0.1 * m); }));
+    r = O.applyTimeOperation("scale", dSpec, [0, 1, 2, 3, 4, 5, 6], 1 / 3, true);
+    checkArray("a = 1/3 inserts two zeros: y at n=1,2,4,5 is 0", [r.y[1], r.y[2], r.y[4], r.y[5]], [0, 0, 0, 0]);
+    checkArray("a = -2 (decimate + reverse): reads x[-2n]", O.applyTimeOperation("scale", dSpec, [-1, 0, 1, 2], -2, true).sourceTimes, [2, 0, -2, -4]);
+    checkTrue("a = 1.5 is rejected in discrete mode", throws(function () { O.applyTimeOperation("scale", dSpec, N, 1.5, true); }));
+    checkArray("reverse: y[n] = x[-n] = array read backwards", O.applyTimeOperation("reverse", dSpec, N, 0, true).y, xN.slice().reverse());
+    check("rule: a = 2 decimates by 2", O.getDiscreteScaleRule(2).type === "decimate" && O.getDiscreteScaleRule(2).factor === 2 ? 0 : 1, 0);
+    check("rule: a = 0.25 expands by 4", O.getDiscreteScaleRule(0.25).type === "expand" && O.getDiscreteScaleRule(0.25).factor === 4 ? 0 : 1, 0);
+    check("rule: a = 1/3 (from the fraction text) expands by 3", O.getDiscreteScaleRule(O.parseScaleFactor("1/3").value).factor, 3);
+    check("rule: a = -3 decimates by 3 with sign -1", O.getDiscreteScaleRule(-3).sign * O.getDiscreteScaleRule(-3).factor, -3);
+    checkTrue("rule: a = 1.5 has no meaning", O.getDiscreteScaleRule(1.5) === null);
+    checkTrue("rule: a = 0 has no meaning", O.getDiscreteScaleRule(0) === null);
+    checkTrue("rule: a = 0.4 has no meaning (1/0.4 = 2.5)", O.getDiscreteScaleRule(0.4) === null);
+
+    section("Operations: parsing the scale factor");
+    check("'2' -> 2", O.parseScaleFactor("2").value, 2);
+    check("'-0.5' -> -0.5", O.parseScaleFactor("-0.5").value, -0.5);
+    check("'1/4' -> 0.25", O.parseScaleFactor(" 1/4 ").value, 0.25);
+    check("'-1/2' -> -0.5", O.parseScaleFactor("-1/2").value, -0.5);
+    checkTrue("'' rejected", !O.parseScaleFactor("").ok);
+    checkTrue("'abc' rejected", !O.parseScaleFactor("abc").ok);
+    checkTrue("'1/0' rejected", !O.parseScaleFactor("1/0").ok);
+    checkTrue("'1/2/3' rejected", !O.parseScaleFactor("1/2/3").ok);
+
+    section("Operations: input validation");
+    const opGood = { operation: "add", mode: "continuous",
+      s1Type: "sine", s1Amplitude: "1", s1Frequency: "1", s1Phase: "0",
+      s2Type: "sine", s2Amplitude: "0.5", s2Frequency: "3", s2Phase: "0",
+      shift: "1", scale: "2", start: "-2", end: "2" };
+    function opError(changes, key) { return O.validateInputs(Object.assign({}, opGood, changes)).errors[key]; }
+    checkTrue("default inputs are valid", O.validateInputs(opGood).ok);
+    checkTrue("amplitude 0 rejected", opError({ s1Amplitude: "0" }, "s1Amplitude") !== undefined);
+    checkTrue("negative amplitude rejected (signal 2)", opError({ s2Amplitude: "-1" }, "s2Amplitude") !== undefined);
+    checkTrue("empty amplitude rejected", opError({ s1Amplitude: "" }, "s1Amplitude") !== undefined);
+    checkTrue("text frequency rejected", opError({ s1Frequency: "fast" }, "s1Frequency") !== undefined);
+    checkTrue("frequency 0 rejected", opError({ s1Frequency: "0" }, "s1Frequency") !== undefined);
+    checkTrue("frequency 101 rejected", opError({ s2Frequency: "101" }, "s2Frequency") !== undefined);
+    checkTrue("phase 5000 rejected", opError({ s1Phase: "5000" }, "s1Phase") !== undefined);
+    checkTrue("bad signal type rejected", opError({ s1Type: "triangle" }, "s1Type") !== undefined);
+    checkTrue("end <= start rejected", opError({ start: "2", end: "2" }, "end") !== undefined);
+    checkTrue("window over 100 s rejected", opError({ start: "0", end: "101", s1Frequency: "0.1", s2Frequency: "0.1" }, "end") !== undefined);
+    checkTrue("multiply: f1 + f2 over the window gives too many cycles", opError({ operation: "multiply", s1Frequency: "60", s2Frequency: "60" }, "end") !== undefined);
+    checkTrue("add with two 45 Hz waves (180 cycles) is fine", opError({ s1Frequency: "45", s2Frequency: "45" }, "end") === undefined);
+    checkTrue("add with two 60 Hz waves (240 cycles) is too many", opError({ s1Frequency: "60", s2Frequency: "60" }, "end") !== undefined);
+    checkTrue("signal 2 is ignored for time operations", O.validateInputs(Object.assign({}, opGood, { operation: "shift", s2Amplitude: "zzz" })).ok);
+    checkTrue("shift is ignored for addition", O.validateInputs(Object.assign({}, opGood, { shift: "zzz", scale: "zzz" })).ok);
+    checkTrue("shift: text rejected", opError({ operation: "shift", shift: "abc" }, "shift") !== undefined);
+    checkTrue("shift: 1001 rejected", opError({ operation: "shift", shift: "1001" }, "shift") !== undefined);
+    checkTrue("shift: negative accepted", opError({ operation: "shift", shift: "-2.5" }, "shift") === undefined);
+    check("shift value is passed on as a number", O.validateInputs(Object.assign({}, opGood, { operation: "shift", shift: "-2.5" })).values.parameter, -2.5);
+    checkTrue("scale: 0 rejected", opError({ operation: "scale", scale: "0" }, "scale") !== undefined);
+    checkTrue("scale: text rejected", opError({ operation: "scale", scale: "x" }, "scale") !== undefined);
+    checkTrue("scale: 1/0 rejected", opError({ operation: "scale", scale: "1/0" }, "scale") !== undefined);
+    checkTrue("scale: 20 rejected", opError({ operation: "scale", scale: "20" }, "scale") !== undefined);
+    checkTrue("scale: 0.05 rejected", opError({ operation: "scale", scale: "0.05" }, "scale") !== undefined);
+    checkTrue("scale: negative accepted", opError({ operation: "scale", scale: "-2" }, "scale") === undefined);
+    checkTrue("scale: fraction accepted", opError({ operation: "scale", scale: "1/3" }, "scale") === undefined);
+    checkTrue("scale: too many cycles (f=10 * a=10 over 4 s = 400)", opError({ operation: "scale", s1Frequency: "10", scale: "10" }, "end") !== undefined);
+    const dGood = Object.assign({}, opGood, { mode: "discrete", s1Frequency: "0.05", s2Frequency: "0.15", start: "-20", end: "20", shift: "5" });
+    function dError(changes, key) { return O.validateInputs(Object.assign({}, dGood, changes))["errors"][key]; }
+    checkTrue("discrete defaults are valid", O.validateInputs(dGood).ok);
+    checkTrue("discrete: frequency 1 rejected (cycles per sample)", dError({ s1Frequency: "1" }, "s1Frequency") !== undefined);
+    checkTrue("discrete: frequency 0.5 accepted", dError({ s1Frequency: "0.5" }, "s1Frequency") === undefined);
+    checkTrue("discrete: frequency 0.51 rejected", dError({ s1Frequency: "0.51" }, "s1Frequency") !== undefined);
+    checkTrue("discrete: shift 2.5 rejected", dError({ operation: "shift", shift: "2.5" }, "shift") !== undefined);
+    checkTrue("discrete: shift -3 accepted", dError({ operation: "shift", shift: "-3" }, "shift") === undefined);
+    checkTrue("discrete: scale 1.5 rejected", dError({ operation: "scale", scale: "1.5" }, "scale") !== undefined);
+    checkTrue("discrete: scale 3 accepted", dError({ operation: "scale", scale: "3" }, "scale") === undefined);
+    checkTrue("discrete: scale 1/3 accepted", dError({ operation: "scale", scale: "1/3" }, "scale") === undefined);
+    checkTrue("discrete: scale 0.4 rejected", dError({ operation: "scale", scale: "0.4" }, "scale") !== undefined);
+    checkTrue("discrete: scale 11 rejected", dError({ operation: "scale", scale: "11" }, "scale") !== undefined);
+    checkTrue("discrete: first sample 1.5 rejected", dError({ start: "1.5", end: "20" }, "start") !== undefined);
+    checkTrue("discrete: window over 200 samples rejected", dError({ start: "-150", end: "150" }, "end") !== undefined);
+    checkTrue("discrete: ignores cycle limit", O.validateInputs(Object.assign({}, dGood, { operation: "multiply", s1Frequency: "0.5", s2Frequency: "0.5" })).ok);
+
+    section("Operations: end-to-end results");
+    let full = O.computeResult(O.validateInputs(opGood).values);
+    check("continuous axis has at least 501 points", full.input1.t.length >= 501 ? 0 : 1, 0);
+    check("both inputs share one axis (same length)", full.input2.t.length - full.input1.t.length, 0);
+    let sumGap = 0;
+    for (let i = 0; i < full.result.t.length; i++) {
+      const t = full.input1.t[i];
+      sumGap = Math.max(sumGap, Math.abs(full.result.y[i] - (Math.sin(2 * Math.PI * t) + 0.5 * Math.sin(2 * Math.PI * 3 * t))));
+    }
+    check("add: result equals sin(2 pi t) + 0.5 sin(6 pi t) at every point", sumGap, 0);
+    full = O.computeResult(O.validateInputs(Object.assign({}, opGood, { operation: "shift", shift: "1.5" })).values);
+    let shGap = 0;
+    for (let i = 0; i < full.result.t.length; i++) { shGap = Math.max(shGap, Math.abs(full.result.y[i] - Math.sin(2 * Math.PI * (full.result.t[i] - 1.5)))); }
+    check("shift: result equals sin(2 pi (t - 1.5)) at every point", shGap, 0);
+    check("shift: no second input", full.input2 === null ? 0 : 1, 0);
+    full = O.computeResult(O.validateInputs(Object.assign({}, opGood, { operation: "scale", scale: "-2" })).values);
+    let scGap = 0;
+    for (let i = 0; i < full.result.t.length; i++) { scGap = Math.max(scGap, Math.abs(full.result.y[i] - Math.sin(2 * Math.PI * (-2 * full.result.t[i])))); }
+    check("scale a=-2: result equals sin(2 pi (-2t)) at every point", scGap, 0);
+    full = O.computeResult(O.validateInputs(Object.assign({}, opGood, { operation: "multiply", s1Frequency: "1", s2Frequency: "2" })).values);
+    let mulGap = 0;
+    for (let i = 0; i < full.result.t.length; i++) { const t = full.result.t[i]; mulGap = Math.max(mulGap, Math.abs(full.result.y[i] - 0.5 * Math.sin(2 * Math.PI * t) * Math.sin(4 * Math.PI * t))); }
+    check("multiply: result equals x1 * x2 at every point (500+ points)", mulGap, 0);
+    full = O.computeResult(O.validateInputs(dGood).values);
+    check("discrete: axis is the integers -20..20 (41 points)", full.input1.t.length, 41);
+    check("discrete: first and last n", full.input1.t[0] + full.input1.t[40], 0);
+    full = O.computeResult(O.validateInputs(Object.assign({}, dGood, { operation: "scale", scale: "1/2" })).values);
+    check("discrete expansion: n = 1 is an inserted zero", full.result.y[full.result.t.indexOf(1)], 0);
+    check("discrete expansion: n = 2 equals x[1]", full.result.y[full.result.t.indexOf(2)], Math.sin(2 * Math.PI * 0.05 * 1));
+
+    section("Operations: discrete time scaling y[n] = x[a n] (output axis and values)");
+    const dsc = function (a, start, end) {
+      return O.computeResult(O.validateInputs(Object.assign({}, dGood, { operation: "scale", scale: a, start: String(start), end: String(end) })).values);
+    };
+    const xd = function (n) { return Math.sin(2 * Math.PI * 0.05 * n); };   // dGood: sine, A=1, f=0.05
+    const joined = function (arr) { return arr.join(","); };
+
+    full = dsc("4", -20, 20);
+    check("a=4: original input keeps 41 samples", full.input1.t.length, 41);
+    check("a=4: original input starts at -20", full.input1.t[0], -20);
+    check("a=4: original input ends at 20", full.input1.t[40], 20);
+    check("a=4: output has 11 samples", full.result.t.length, 11);
+    checkTrue("a=4: output indices are -5..5", joined(full.result.t) === "-5,-4,-3,-2,-1,0,1,2,3,4,5");
+    checkTrue("a=4: selected source indices are -20,-16,...,16,20", joined(full.sourceTimes) === "-20,-16,-12,-8,-4,0,4,8,12,16,20");
+    let dgap = 0;
+    for (let i = 0; i < full.result.t.length; i++) { dgap = Math.max(dgap, Math.abs(full.result.y[i] - xd(4 * full.result.t[i]))); }
+    check("a=4: y[n] equals x[4n] at every output index", dgap, 0);
+    // y[n] must equal the ORIGINAL signal's value at index 4n (taken from the plotted input)
+    let pickGap = 0;
+    for (let i = 0; i < full.result.t.length; i++) { pickGap = Math.max(pickGap, Math.abs(full.result.y[i] - full.input1.y[full.input1.t.indexOf(4 * full.result.t[i])])); }
+    check("a=4: y[n] equals the plotted input sample at index 4n", pickGap, 0);
+    check("a=4: result y and t have the same length", full.result.y.length - full.result.t.length, 0);
+
+    full = dsc("2", -20, 20);
+    check("a=2: 21 output samples", full.result.t.length, 21);
+    checkTrue("a=2: output indices are -10..10", full.result.t[0] === -10 && full.result.t[20] === 10);
+    checkTrue("a=2: sources are -20,-18,...,20", full.sourceTimes[0] === -20 && full.sourceTimes[1] === -18 && full.sourceTimes[20] === 20);
+    let g2 = 0;
+    for (let i = 0; i < full.result.t.length; i++) { g2 = Math.max(g2, Math.abs(full.result.y[i] - xd(2 * full.result.t[i]))); }
+    check("a=2: y[n] equals x[2n]", g2, 0);
+
+    full = dsc("1/2", -20, 20);
+    check("a=1/2: 81 output samples (n = -40..40)", full.result.t.length, 81);
+    checkTrue("a=1/2: output indices run -40..40", full.result.t[0] === -40 && full.result.t[80] === 40);
+    let g3 = 0, zerosOk = true;
+    for (let i = 0; i < full.result.t.length; i++) {
+      const n = full.result.t[i];
+      if (n % 2 === 0) { g3 = Math.max(g3, Math.abs(full.result.y[i] - xd(n / 2))); } else if (full.result.y[i] !== 0) { zerosOk = false; }
+    }
+    check("a=1/2: even n equals x[n/2]", g3, 0);
+    checkTrue("a=1/2: odd n are inserted zeros", zerosOk);
+    check("a=1/2: every original sample is kept (41 non-zero positions)", full.result.t.filter(function (n) { return n % 2 === 0; }).length, 41);
+
+    full = dsc("1/3", -20, 20);
+    check("a=1/3: 121 output samples (n = -60..60)", full.result.t.length, 121);
+    let g4 = 0, zeros3 = true;
+    for (let i = 0; i < full.result.t.length; i++) {
+      const n = full.result.t[i];
+      if (n % 3 === 0) { g4 = Math.max(g4, Math.abs(full.result.y[i] - xd(n / 3))); } else if (full.result.y[i] !== 0) { zeros3 = false; }
+    }
+    check("a=1/3: n divisible by 3 equals x[n/3]", g4, 0);
+    checkTrue("a=1/3: other n are inserted zeros", zeros3);
+
+    full = dsc("-2", -20, 20);
+    check("a=-2: 21 output samples", full.result.t.length, 21);
+    let g5 = 0;
+    for (let i = 0; i < full.result.t.length; i++) { g5 = Math.max(g5, Math.abs(full.result.y[i] - xd(-2 * full.result.t[i]))); }
+    check("a=-2: y[n] equals x[-2n]", g5, 0);
+    full = dsc("-1/2", -20, 20);
+    check("a=-1/2: 81 output samples", full.result.t.length, 81);
+    check("a=-1/2: n=2 reads x[-1]", full.result.y[full.result.t.indexOf(2)], xd(-1));
+    full = dsc("1", -20, 20);
+    check("a=1: output equals input (41 samples)", full.result.t.length, 41);
+    full = dsc("3", -20, 20);
+    checkTrue("a=3 on -20..20: n = -6..6 (3n stays within +-20)", full.result.t[0] === -6 && full.result.t[full.result.t.length - 1] === 6);
+    full = dsc("4", -3, 3);
+    checkTrue("a=4 on -3..3: only n = 0 survives", joined(full.result.t) === "0");
+    full = dsc("4", 1, 9);
+    checkTrue("a=4 on 1..9: n = 1, 2 (sources 4, 8)", joined(full.result.t) === "1,2" && joined(full.sourceTimes) === "4,8");
+    checkTrue("axis helper: decimate 4 on -20..20", joined(O.getDiscreteScaleAxis(O.getDiscreteScaleRule(4), -20, 20)) === "-5,-4,-3,-2,-1,0,1,2,3,4,5");
+    checkTrue("axis helper has no negative zero", Object.is(O.getDiscreteScaleAxis(O.getDiscreteScaleRule(-4), -20, 20)[5], 0));
+    // Other operations must keep the input axis in discrete mode
+    ["shift", "reverse"].forEach(function (op) {
+      const r = O.computeResult(O.validateInputs(Object.assign({}, dGood, { operation: op })).values);
+      check("discrete " + op + ": output axis is still the input axis (41 samples)", r.result.t.length, 41);
+    });
+    // Continuous scaling keeps the shared axis
+    full = O.computeResult(O.validateInputs(Object.assign({}, opGood, { operation: "scale", scale: "4" })).values);
+    check("continuous scale a=4: output axis equals input axis length", full.result.t.length - full.input1.t.length, 0);
+    check("continuous scale a=4: output axis starts at the window start", full.result.t[0], full.input1.t[0]);
+
+    const EO = SignalLab.math.evenodd;
+    const eoGood = { mode: "continuous", type: "sine", amplitude: "1", frequency: "1", phase: "0.785", halfWidth: "2" };
+    const eoValues = function (changes) {
+      const r = EO.validateInputs(Object.assign({}, eoGood, changes));
+      if (!r.ok) { throw new Error("test input rejected: " + JSON.stringify(r.errors)); }
+      return r.values;
+    };
+    const maxDiff = function (a, b) { let m = 0; for (let i = 0; i < a.length; i++) { m = Math.max(m, Math.abs(a[i] - b[i])); } return m; };
+
+    section("Even/Odd: the two formulas on numbers worked out by hand");
+    // x(t) = [1, 2, 3] and x(-t) = [3, 2, 1] at the same positions
+    checkArray("even part of [1,2,3] with reversed [3,2,1] is [2,2,2]", EO.evenPart([1, 2, 3], [3, 2, 1]), [2, 2, 2]);
+    checkArray("odd part of [1,2,3] with reversed [3,2,1] is [-1,0,1]", EO.oddPart([1, 2, 3], [3, 2, 1]), [-1, 0, 1]);
+    checkArray("x(t)=t: even part is 0", EO.evenPart([-2, 5], [2, -5]), [0, 0]);
+    checkArray("x(t)=t: odd part is t itself", EO.oddPart([-2, 5], [2, -5]), [-2, 5]);
+    checkArray("x(t)=t^2: even part is t^2 itself", EO.evenPart([4, 25], [4, 25]), [4, 25]);
+    checkArray("x(t)=t^2: odd part is 0", EO.oddPart([4, 25], [4, 25]), [0, 0]);
+    // a mixed signal: 3 + 2t. Even part is 3, odd part is 2t
+    checkArray("x(t)=3+2t at t=-1,1: even part [3,3]", EO.evenPart([1, 5], [5, 1]), [3, 3]);
+    checkArray("x(t)=3+2t at t=-1,1: odd part [-2,2]", EO.oddPart([1, 5], [5, 1]), [-2, 2]);
+
+    section("Even/Odd: pure signals (continuous)");
+    let eo = EO.computeResult(eoValues({ type: "cosine", phase: "0" }));
+    check("cosine, phase 0: odd part is 0 everywhere", EO.largestAbsolute(eo.odd), 0);
+    check("cosine, phase 0: even part equals the cosine", maxDiff(eo.even, eo.x), 0);
+    checkTrue("cosine, phase 0 is classified even", eo.classification === "even");
+    eo = EO.computeResult(eoValues({ type: "sine", phase: "0" }));
+    check("sine, phase 0: even part is 0 everywhere", EO.largestAbsolute(eo.even), 0);
+    check("sine, phase 0: odd part equals the sine", maxDiff(eo.odd, eo.x), 0);
+    checkTrue("sine, phase 0 is classified odd", eo.classification === "odd");
+    eo = EO.computeResult(eoValues({ type: "sine", phase: String(Math.PI / 2) }));
+    checkTrue("sine, phase pi/2 (a cosine) is classified even", eo.classification === "even");
+    eo = EO.computeResult(eoValues({ type: "cosine", phase: String(Math.PI / 2) }));
+    checkTrue("cosine, phase pi/2 (a negative sine) is classified odd", eo.classification === "odd");
+    eo = EO.computeResult(eoValues({ type: "sine", phase: "0.785" }));
+    checkTrue("sine, phase 0.785 is classified neither", eo.classification === "neither");
+
+    section("Even/Odd: sine with a phase matches the closed form");
+    // A sin(th + p) = A sin(p) cos(th) + A cos(p) sin(th)  ->  even = A sin(p) cos(th), odd = A cos(p) sin(th)
+    [{ A: 1, f: 1, p: 0.785 }, { A: 2.5, f: 0.5, p: -1.2 }, { A: 0.7, f: 3, p: 2.4 }].forEach(function (c) {
+      const r = EO.computeResult(eoValues({ amplitude: String(c.A), frequency: String(c.f), phase: String(c.p), halfWidth: "3" }));
+      const evenClosed = r.t.map(function (t) { return c.A * Math.sin(c.p) * Math.cos(2 * Math.PI * c.f * t); });
+      const oddClosed  = r.t.map(function (t) { return c.A * Math.cos(c.p) * Math.sin(2 * Math.PI * c.f * t); });
+      check("A=" + c.A + " f=" + c.f + " phase=" + c.p + ": even part = A sin(phase) cos(2 pi f t)", maxDiff(r.even, evenClosed), 0);
+      check("A=" + c.A + " f=" + c.f + " phase=" + c.p + ": odd part = A cos(phase) sin(2 pi f t)", maxDiff(r.odd, oddClosed), 0);
+    });
+
+    section("Even/Odd: reconstruction x = x_e + x_o for every type, both modes");
+    ["sine", "cosine", "square"].forEach(function (type) {
+      ["continuous", "discrete"].forEach(function (mode) {
+        [["0", "0.785"], ["1.5", "-2.3"], ["0.3", "5"]].forEach(function (pair, index) {
+          const isD = mode === "discrete";
+          const values = eoValues({
+            type: type, mode: mode, amplitude: pair[0] === "0" ? "1" : "2",
+            frequency: isD ? ["0.05", "0.2", "0.5"][index] : ["1", "2.5", "0.5"][index],
+            phase: pair[1], halfWidth: isD ? "15" : "3"
+          });
+          const r = EO.computeResult(values);
+          const sum = r.even.map(function (e, i) { return e + r.odd[i]; });
+          check(type + " " + mode + " #" + index + ": max |x - (x_e + x_o)| is 0 (within 1e-9)", maxDiff(sum, r.x), 0);
+          checkTrue(type + " " + mode + " #" + index + ": verification passes", r.verification.passed);
+        });
+      });
+    });
+
+    section("Even/Odd: x_e is even and x_o is odd");
+    ["sine", "cosine", "square"].forEach(function (type) {
+      const r = EO.computeResult(eoValues({ type: type, phase: "0.9", frequency: "1.3", halfWidth: "2.5" }));
+      const last = r.t.length - 1;
+      let evenGap = 0, oddGap = 0;
+      for (let i = 0; i <= last; i++) {
+        evenGap = Math.max(evenGap, Math.abs(r.even[i] - r.even[last - i]));
+        oddGap = Math.max(oddGap, Math.abs(r.odd[i] + r.odd[last - i]));
+      }
+      check(type + ": x_e(t) = x_e(-t) at every mirrored pair", evenGap, 0);
+      check(type + ": x_o(t) = -x_o(-t) at every mirrored pair", oddGap, 0);
+      check(type + ": x_o(0) = 0", r.odd[(last) / 2], 0);
+    });
+
+    section("Even/Odd: discrete signals use whole-number indices, no interpolation");
+    eo = EO.computeResult(eoValues({ mode: "discrete", frequency: "0.05", halfWidth: "20" }));
+    check("N = 20 gives 41 samples", eo.t.length, 41);
+    check("first index is -20", eo.t[0], -20);
+    check("last index is 20", eo.t[40], 20);
+    checkTrue("every index is a whole number", eo.t.every(function (n) { return Number.isInteger(n); }));
+    checkTrue("indices step by exactly 1", eo.t.every(function (n, i) { return i === 0 || n - eo.t[i - 1] === 1; }));
+    check("x[-n] is the real sample at index -n (xReversed is x read backwards)", maxDiff(eo.xReversed, eo.x.slice().reverse()), 0);
+    check("x_e[n] = (x[n] + x[-n]) / 2 at n = 5", eo.even[25], (eo.x[25] + eo.x[15]) / 2);
+    check("x_o[n] = (x[n] - x[-n]) / 2 at n = 5", eo.odd[25], (eo.x[25] - eo.x[15]) / 2);
+    check("x_o[0] = 0", eo.odd[20], 0);
+    check("x_e[0] = x[0]", eo.even[20], eo.x[20]);
+    // a hand check: x[n] = sin(2 pi 0.25 n + pi/4); at n = 1, x[1] = sin(pi/2 + pi/4) and x[-1] = sin(-pi/2 + pi/4)
+    eo = EO.computeResult(eoValues({ mode: "discrete", frequency: "0.25", phase: String(Math.PI / 4), halfWidth: "2" }));
+    check("hand check x[1] = sin(3 pi/4)", eo.x[3], Math.sin(3 * Math.PI / 4));
+    check("hand check x[-1] = sin(-pi/4)", eo.x[1], Math.sin(-Math.PI / 4));
+    check("hand check x_e[1] = (sin(3pi/4) + sin(-pi/4)) / 2 = 0", eo.even[3], 0);
+    check("hand check x_o[1] = (sin(3pi/4) - sin(-pi/4)) / 2 = sin(3pi/4)", eo.odd[3], Math.sin(3 * Math.PI / 4));
+    eo = EO.computeResult(eoValues({ mode: "discrete", type: "square", frequency: "0.1", phase: "0", halfWidth: "10" }));
+    check("discrete square: x[0] = +A (jump convention)", eo.x[10], 1);
+    check("discrete square: x_e[0] = A and x_o[0] = 0", eo.even[10] - eo.odd[10], 1);
+    checkTrue("discrete square: verification passes", eo.verification.passed);
+
+    section("Even/Odd: symmetric axis");
+    const axC = EO.makeAxis(eoValues({ halfWidth: "2" }));
+    check("continuous axis starts at -T", axC[0], -2);
+    check("continuous axis ends at T", axC[axC.length - 1], 2);
+    checkTrue("continuous axis contains t = 0", axC.indexOf(0) !== -1);
+    checkTrue("continuous axis is exactly symmetric", axC.every(function (t, i) { return Math.abs(t + axC[axC.length - 1 - i]) < 1e-12; }));
+    checkTrue("continuous axis has an odd number of points", axC.length % 2 === 1);
+    let threw = false;
+    try { EO.verifyDecomposition({ t: [-1, 0, 2], x: [0, 0, 0], even: [0, 0, 0], odd: [0, 0, 0] }); } catch (e) { threw = true; }
+    checkTrue("verification refuses an axis that is not symmetric", threw);
+
+    section("Even/Odd: the verification really detects wrong parts");
+    const eoRight = EO.decomposeSignal({ type: "sine", amplitude: 1, frequency: 1, phase: 0.785 }, EO.makeAxis(eoValues({})));
+    checkTrue("correct parts pass", EO.verifyDecomposition(eoRight).passed);
+    const badEven = Object.assign({}, eoRight, { even: eoRight.even.map(function (v, i) { return i === 10 ? v + 0.01 : v; }) });
+    const vBadEven = EO.verifyDecomposition(badEven);
+    checkTrue("a changed even value breaks the reconstruction check", !vBadEven.reconstructionOk);
+    checkTrue("a changed even value breaks the even-symmetry check", !vBadEven.evenOk);
+    const badOdd = Object.assign({}, eoRight, { odd: eoRight.odd.map(function (v) { return v + 0.2; }) });
+    checkTrue("an odd part that is shifted up fails (no longer odd)", !EO.verifyDecomposition(badOdd).oddOk);
+    const swapped = Object.assign({}, eoRight, { even: eoRight.odd, odd: eoRight.even });
+    checkTrue("swapping the even and odd parts fails", !EO.verifyDecomposition(swapped).passed);
+
+    section("Even/Odd: amplitude scales both parts");
+    const r1 = EO.computeResult(eoValues({ amplitude: "1" }));
+    const r3 = EO.computeResult(eoValues({ amplitude: "3" }));
+    check("tripling A triples the even part", maxDiff(r3.even, r1.even.map(function (v) { return 3 * v; })), 0);
+    check("tripling A triples the odd part", maxDiff(r3.odd, r1.odd.map(function (v) { return 3 * v; })), 0);
+
+    section("Even/Odd: input checking");
+    checkTrue("good continuous input is accepted", EO.validateInputs(eoGood).ok);
+    checkTrue("good discrete input is accepted", EO.validateInputs(Object.assign({}, eoGood, { mode: "discrete", frequency: "0.05", halfWidth: "20" })).ok);
+    checkTrue("unknown signal type is rejected", !EO.validateInputs(Object.assign({}, eoGood, { type: "triangle" })).ok);
+    checkTrue("empty amplitude is rejected", "amplitude" in EO.validateInputs(Object.assign({}, eoGood, { amplitude: "" })).errors);
+    checkTrue("zero amplitude is rejected", "amplitude" in EO.validateInputs(Object.assign({}, eoGood, { amplitude: "0" })).errors);
+    checkTrue("text in phase is rejected", "phase" in EO.validateInputs(Object.assign({}, eoGood, { phase: "abc" })).errors);
+    checkTrue("zero frequency is rejected", "frequency" in EO.validateInputs(Object.assign({}, eoGood, { frequency: "0" })).errors);
+    checkTrue("frequency above the limit is rejected", "frequency" in EO.validateInputs(Object.assign({}, eoGood, { frequency: "1000" })).errors);
+    checkTrue("discrete frequency 0.7 (above 0.5 cycles/sample) is rejected", "frequency" in EO.validateInputs(Object.assign({}, eoGood, { mode: "discrete", frequency: "0.7", halfWidth: "10" })).errors);
+    checkTrue("discrete frequency 0.5 is accepted", EO.validateInputs(Object.assign({}, eoGood, { mode: "discrete", frequency: "0.5", halfWidth: "10" })).ok);
+    checkTrue("range 0 is rejected", "halfWidth" in EO.validateInputs(Object.assign({}, eoGood, { halfWidth: "0" })).errors);
+    checkTrue("negative range is rejected", "halfWidth" in EO.validateInputs(Object.assign({}, eoGood, { halfWidth: "-2" })).errors);
+    checkTrue("empty range is rejected", "halfWidth" in EO.validateInputs(Object.assign({}, eoGood, { halfWidth: "" })).errors);
+    checkTrue("continuous window above 100 s is rejected", "halfWidth" in EO.validateInputs(Object.assign({}, eoGood, { halfWidth: "60", frequency: "0.5" })).errors);
+    checkTrue("too many cycles is rejected", "halfWidth" in EO.validateInputs(Object.assign({}, eoGood, { halfWidth: "50", frequency: "10" })).errors);
+    checkTrue("discrete N = 2.5 (not a whole number) is rejected", "halfWidth" in EO.validateInputs(Object.assign({}, eoGood, { mode: "discrete", frequency: "0.05", halfWidth: "2.5" })).errors);
+    checkTrue("discrete N = 101 (above the limit) is rejected", "halfWidth" in EO.validateInputs(Object.assign({}, eoGood, { mode: "discrete", frequency: "0.05", halfWidth: "101" })).errors);
+    checkTrue("discrete N = 100 is accepted", EO.validateInputs(Object.assign({}, eoGood, { mode: "discrete", frequency: "0.05", halfWidth: "100" })).ok);
+    checkTrue("discrete N = 1 is accepted (3 samples)", EO.computeResult(eoValues({ mode: "discrete", frequency: "0.05", halfWidth: "1" })).t.length === 3);
+
+    const PE = SignalLab.math.periodicity;
+    const checkText = function (name, actual, expected) {
+      const ok = actual === expected;
+      checkTrue(name + (ok ? "" : " (got \"" + actual + "\", expected \"" + expected + "\")"), ok);
+    };
+    // Build checked values from short descriptions: [frequency, phase, amplitude]
+    const peValues = function (mode, parts, windowText) {
+      const r = PE.validateInputs({
+        mode: mode, window: windowText || "",
+        components: parts.map(function (p) { return { frequency: p[0], phase: p[1] === undefined ? "0.785" : p[1], amplitude: p[2] === undefined ? "1" : p[2] }; })
+      });
+      if (!r.ok) { throw new Error("test input rejected: " + JSON.stringify(r.errors)); }
+      return r.values;
+    };
+    const peAnalyze = function (mode, parts) { return PE.analyze(peValues(mode, parts)); };
+    // The period as text: "1/2 s", "8 samples", or "none"
+    const peText = function (mode, parts) { const a = peAnalyze(mode, parts); return a.fundamental ? a.fundamental.text : "none"; };
+    const parseText = function (text) { const r = PE.parseExact(text); return r.ok ? PE.formatExact(r.value) : "ERROR"; };
+
+    section("Periodicity: reading numbers and fractions");
+    checkText("integer 2", parseText("2"), "2");
+    checkText("negative integer -3", parseText("-3"), "-3");
+    checkText("decimal 0.75 is exactly 3/4", parseText("0.75"), "3/4");
+    checkText("decimal 0.1 is exactly 1/10 (no floating-point error)", parseText("0.1"), "1/10");
+    checkText("decimal .5 is 1/2", parseText(".5"), "1/2");
+    checkText("1.25 is 5/4", parseText("1.25"), "5/4");
+    checkText("scientific 1e-3 is 1/1000", parseText("1e-3"), "1/1000");
+    checkText("scientific 2.5e2 is 250", parseText("2.5e2"), "250");
+    checkText("fraction 3/4", parseText("3/4"), "3/4");
+    checkText("fraction 2/4 is reduced to 1/2", parseText("2/4"), "1/2");
+    checkText("fraction 6/3 is 2", parseText("6/3"), "2");
+    checkText("negative fraction -2/3", parseText("-2/3"), "-2/3");
+    checkText("fraction with negative denominator 2/-3 is -2/3", parseText("2/-3"), "-2/3");
+    checkText("spaces are allowed: ' 1 / 2 '", parseText(" 1 / 2 "), "1/2");
+    checkText("decimal fraction 0.5/0.25 is 2", parseText("0.5/0.25"), "2");
+    checkText("zero is 0", parseText("0"), "0");
+    checkText("0/5 is 0", parseText("0/5"), "0");
+    checkText("pi", parseText("pi"), "π");
+    checkText("the symbol π", parseText("π"), "π");
+    checkText("2*pi", parseText("2*pi"), "2π");
+    checkText("2pi (implicit product)", parseText("2pi"), "2π");
+    checkText("pi/4", parseText("pi/4"), "π/4");
+    checkText("1/pi", parseText("1/pi"), "1/π");
+    checkText("1/(2*pi)", parseText("1/(2*pi)"), "1/(2π)");
+    checkText("sqrt(2)", parseText("sqrt(2)"), "√2");
+    checkText("the symbol √2", parseText("√2"), "√2");
+    checkText("sqrt(8) is simplified to 2√2", parseText("sqrt(8)"), "2√2");
+    checkText("sqrt(4) is exactly 2", parseText("sqrt(4)"), "2");
+    checkText("sqrt(1/4) is exactly 1/2", parseText("sqrt(1/4)"), "1/2");
+    checkText("sqrt(1/2) is √2/2", parseText("sqrt(1/2)"), "√2/2");
+    checkText("1/sqrt(2) is √2/2", parseText("1/sqrt(2)"), "√2/2");
+    checkText("sqrt(2)/10", parseText("sqrt(2)/10"), "√2/10");
+    checkText("-sqrt(2)/2", parseText("-sqrt(2)/2"), "-√2/2");
+    checkText("sqrt(2)*sqrt(2) is exactly 2", parseText("sqrt(2)*sqrt(2)"), "2");
+    checkText("sqrt(2)*sqrt(3) is √6", parseText("sqrt(2)*sqrt(3)"), "√6");
+    checkText("pi*pi is π²", parseText("pi*pi"), "π²");
+    checkText("pi/pi is exactly 1", parseText("pi/pi"), "1");
+    checkText("uppercase PI and SQRT", parseText("2*PI"), "2π");
+    checkText("brackets: (1/2)*pi", parseText("(1/2)*pi"), "π/2");
+    checkText("unicode minus sign", parseText("−3/4"), "-3/4");
+    check("numeric value of 3/4", PE.exactToNumber(PE.parseExact("3/4").value), 0.75);
+    check("numeric value of pi", PE.exactToNumber(PE.parseExact("pi").value), Math.PI);
+    check("numeric value of sqrt(2)/10", PE.exactToNumber(PE.parseExact("sqrt(2)/10").value), Math.SQRT2 / 10);
+    check("numeric value of 1/(2*pi)", PE.exactToNumber(PE.parseExact("1/(2*pi)").value), 1 / (2 * Math.PI));
+    checkTrue("3/4 is rational", PE.exactIsRational(PE.parseExact("3/4").value));
+    checkTrue("0.1 is rational", PE.exactIsRational(PE.parseExact("0.1").value));
+    checkTrue("sqrt(4) is rational (it is 2)", PE.exactIsRational(PE.parseExact("sqrt(4)").value));
+    checkTrue("sqrt(2) is not rational", !PE.exactIsRational(PE.parseExact("sqrt(2)").value));
+    checkTrue("pi is not rational", !PE.exactIsRational(PE.parseExact("pi").value));
+    checkTrue("2*pi/pi is rational (it is 2)", PE.exactIsRational(PE.parseExact("2*pi/pi").value));
+
+    section("Periodicity: bad input is refused with a message");
+    ["", "   ", "abc", "1/0", "1/(2-2)", "(1/2", "1/2)", "1+2", "3-1", "sqrt(-1)", "sqrt(pi)", "sqrt", "1 2", "1/2pi", "2^3", "1,5", "*2", "2*", "1e99", "1234567890123456789", "sqrt(10000000000000)", "tan(1)"].forEach(function (text) {
+      checkTrue("refused: '" + text + "'", PE.parseExact(text).ok === false);
+    });
+    checkTrue("every refusal has a message", ["abc", "1/0", "1+2", "1/2pi"].every(function (t) { return typeof PE.parseExact(t).error === "string" && PE.parseExact(t).error.length > 10; }));
+    checkTrue("refuses an over-long entry", PE.parseExact(new Array(70).join("1")).ok === false);
+    checkTrue("a non-string input does not crash", PE.parseExact(undefined).ok === false && PE.parseExact(null).ok === false);
+
+    section("Periodicity: exact ratios (rational or not)");
+    const ex = function (text) { return PE.parseExact(text).value; };
+    checkTrue("3/4 and 1/2 have the same basis (ratio is rational)", PE.exactSameBasis(ex("3/4"), ex("1/2")));
+    checkTrue("pi and 2*pi have the same basis", PE.exactSameBasis(ex("pi"), ex("2*pi")));
+    checkTrue("sqrt(2) and sqrt(8) have the same basis (sqrt(8) = 2 sqrt(2))", PE.exactSameBasis(ex("sqrt(2)"), ex("sqrt(8)")));
+    checkTrue("1 and sqrt(2) do not", !PE.exactSameBasis(ex("1"), ex("sqrt(2)")));
+    checkTrue("1 and pi do not", !PE.exactSameBasis(ex("1"), ex("pi")));
+    checkTrue("sqrt(2) and sqrt(3) do not", !PE.exactSameBasis(ex("sqrt(2)"), ex("sqrt(3)")));
+    checkTrue("pi and sqrt(2) do not", !PE.exactSameBasis(ex("pi"), ex("sqrt(2)")));
+    checkTrue("pi and 1/pi do not (ratio is pi squared)", !PE.exactSameBasis(ex("pi"), ex("1/pi")));
+    const ratio = PE.exactRatio(ex("3/4"), ex("1/2"));
+    checkText("ratio (3/4)/(1/2) = 3/2", PE.formatFraction(ratio.n, ratio.d), "3/2");
+    const ratio2 = PE.exactRatio(ex("sqrt(8)"), ex("sqrt(2)"));
+    checkText("ratio sqrt(8)/sqrt(2) = 2", PE.formatFraction(ratio2.n, ratio2.d), "2");
+    checkText("gcd(12, 18) = 6", PE.gcdBig(12n, 18n).toString(), "6");
+    checkText("lcm(4, 6) = 12", PE.lcmBig(4n, 6n).toString(), "12");
+
+    section("Periodicity: one continuous sinusoid, T0 = 1/|f|");
+    checkText("f = 2 Hz: T0 = 1/2 s", peText("continuous", [["2"]]), "1/2 s");
+    checkText("f = 1 Hz: T0 = 1 s", peText("continuous", [["1"]]), "1 s");
+    checkText("f = 0.5 Hz: T0 = 2 s", peText("continuous", [["0.5"]]), "2 s");
+    checkText("f = 1/3 Hz: T0 = 3 s", peText("continuous", [["1/3"]]), "3 s");
+    checkText("f = 3/4 Hz: T0 = 4/3 s", peText("continuous", [["3/4"]]), "4/3 s");
+    checkText("f = 0.25 Hz: T0 = 4 s", peText("continuous", [["0.25"]]), "4 s");
+    checkText("f = 50 Hz: T0 = 1/50 s", peText("continuous", [["50"]]), "1/50 s");
+    checkText("f = pi Hz: T0 = 1/pi s", peText("continuous", [["pi"]]), "1/π s");
+    checkText("f = sqrt(2) Hz: T0 = sqrt(2)/2 s", peText("continuous", [["sqrt(2)"]]), "√2/2 s");
+    checkTrue("a single sinusoid is periodic (even with an irrational f)", peAnalyze("continuous", [["sqrt(2)"]]).periodic);
+    check("numeric T0 for f = 4", peAnalyze("continuous", [["4"]]).fundamental.value, 0.25);
+    check("numeric T0 for f = pi", peAnalyze("continuous", [["pi"]]).fundamental.value, 1 / Math.PI);
+    [["1", "0"], ["2.5", "1.2"], ["0.1", "-3"], ["7", "pi/2"], ["100", "5"]].forEach(function (c) {
+      const a = peAnalyze("continuous", [["2", c[1], c[0]]]);
+      checkText("period of 2 Hz does not depend on amplitude " + c[0] + " or phase " + c[1], a.fundamental.text, "1/2 s");
+    });
+    checkText("a continuous single sinusoid has verdict Periodic", peAnalyze("continuous", [["2"]]).verdict, "Periodic");
+    check("numerical check: x(t + T0) = x(t) for f = 2", PE.verifyPeriod(peValues("continuous", [["2"]]), 0.5), 0);
+    checkTrue("numerical check: T0/2 is NOT a period for f = 2", PE.verifyPeriod(peValues("continuous", [["2", "0"]]), 0.25) > 1);
+    checkTrue("numerical check: 2*T0 is a period", PE.verifyPeriod(peValues("continuous", [["2"]]), 1) < 1e-9);
+
+    section("Periodicity: negative frequencies");
+    checkText("continuous f = -2: same T0 as f = 2", peText("continuous", [["-2"]]), "1/2 s");
+    checkText("continuous f = -3/4: T0 = 4/3 s", peText("continuous", [["-3/4"]]), "4/3 s");
+    checkText("continuous f = -sqrt(2): T0 = sqrt(2)/2", peText("continuous", [["-sqrt(2)"]]), "√2/2 s");
+    checkText("continuous sum 1/2 and -3/4 equals the sum 1/2 and 3/4", peText("continuous", [["1/2"], ["-3/4"]]), peText("continuous", [["1/2"], ["3/4"]]));
+    checkText("discrete f = -1/4: N0 = 4", peText("discrete", [["-1/4"]]), "4 samples");
+    checkText("discrete f = -3/8: N0 = 8", peText("discrete", [["-3/8"]]), "8 samples");
+    checkTrue("discrete f = -sqrt(2)/10 is aperiodic", !peAnalyze("discrete", [["-sqrt(2)/10"]]).periodic);
+    checkTrue("continuous negative irrational ratio is aperiodic", !peAnalyze("continuous", [["1"], ["-sqrt(2)"]]).periodic);
+
+    section("Periodicity: zero frequency (constant signals)");
+    let pz = peAnalyze("continuous", [["0", "pi/2", "2"]]);
+    checkTrue("continuous f = 0 is periodic", pz.periodic);
+    checkTrue("continuous f = 0 is flagged constant", pz.constant);
+    checkTrue("continuous f = 0 has NO fundamental period", pz.fundamental === null);
+    checkText("continuous f = 0 verdict", pz.verdict, "Periodic");
+    checkTrue("the reason says there is no smallest period", pz.reasons.join(" ").indexOf("NO fundamental period") !== -1);
+    pz = peAnalyze("continuous", [["0"], ["0"]]);
+    checkTrue("two constants are still a constant", pz.constant && pz.fundamental === null);
+    pz = peAnalyze("continuous", [["0", "pi/2"], ["3/4"]]);
+    checkText("a constant added to a sinusoid does not change T0", pz.fundamental.text, "4/3 s");
+    checkTrue("a sum with a constant is not flagged constant", !pz.constant);
+    pz = peAnalyze("discrete", [["0", "pi/2", "3"]]);
+    checkTrue("discrete f = 0 is periodic and constant", pz.periodic && pz.constant);
+    check("discrete f = 0: N0 = 1", pz.fundamental.value, 1);
+    pz = peAnalyze("discrete", [["2"]]);
+    check("discrete f = 2 (whole number): constant, N0 = 1", pz.fundamental.value, 1);
+    checkTrue("discrete f = 2 is flagged constant", pz.constant);
+    pz = peAnalyze("discrete", [["1/4"], ["1", "pi/2"]]);
+    check("a discrete constant term does not change N0", pz.fundamental.value, 4);
+
+    section("Periodicity: one discrete sinusoid with rational f, N0 = q");
+    checkText("f = 1/8: N0 = 8", peText("discrete", [["1/8"]]), "8 samples");
+    checkText("f = 3/8: N0 = 8 (q, not p)", peText("discrete", [["3/8"]]), "8 samples");
+    checkText("f = 0.125: N0 = 8", peText("discrete", [["0.125"]]), "8 samples");
+    checkText("f = 2/4 is 1/2 in lowest terms: N0 = 2", peText("discrete", [["2/4", "pi/2"]]), "2 samples");
+    checkText("f = 6/16 is 3/8: N0 = 8", peText("discrete", [["6/16"]]), "8 samples");
+    checkText("f = 1/3: N0 = 3", peText("discrete", [["1/3"]]), "3 samples");
+    checkText("f = 2/3: N0 = 3", peText("discrete", [["2/3"]]), "3 samples");
+    checkText("f = 7/12: N0 = 12", peText("discrete", [["7/12"]]), "12 samples");
+    checkText("f = 0.05: N0 = 20", peText("discrete", [["0.05"]]), "20 samples");
+    checkText("f = 0.2: N0 = 5", peText("discrete", [["0.2"]]), "5 samples");
+    checkText("f = 5/4 behaves like 1/4: N0 = 4", peText("discrete", [["5/4"]]), "4 samples");
+    checkText("f = 3/2 (a half plus one): N0 = 2", peText("discrete", [["3/2", "pi/2"]]), "2 samples");
+    checkText("f = 1/1000: N0 = 1000", peText("discrete", [["1/1000"]]), "1000 samples");
+    checkText("f = 1/2 with phase pi/2: N0 = 2", peText("discrete", [["1/2", "pi/2"]]), "2 samples");
+    checkText("f = 1/2 with phase 0.5: N0 = 2", peText("discrete", [["1/2", "0.5"]]), "2 samples");
+    checkText("a rational discrete verdict is Periodic", peAnalyze("discrete", [["3/8"]]).verdict, "Periodic");
+    checkTrue("the reason for N0 mentions lowest terms and q", /lowest terms/.test(peAnalyze("discrete", [["3/8"]]).reasons.join(" ")));
+    ["1/8", "3/8", "1/3", "7/12", "0.05", "5/4"].forEach(function (f) {
+      const v = peValues("discrete", [[f]]);
+      const a = PE.analyze(v);
+      check("numerical check: x[n + N0] = x[n] for f = " + f, PE.verifyPeriod(v, a.fundamental.value), 0);
+    });
+    // The special case: sin(pi n) = 0 for every integer n
+    pz = peAnalyze("discrete", [["1/2", "0"]]);
+    checkTrue("f = 1/2 with phase 0 is all zeros: constant", pz.constant && pz.periodic);
+    check("f = 1/2 with phase 0: N0 = 1, not 2", pz.fundamental.value, 1);
+    pz = peAnalyze("discrete", [["1/2", "pi"]]);
+    check("f = 1/2 with phase pi: all zeros, N0 = 1", pz.fundamental.value, 1);
+    pz = peAnalyze("discrete", [["3/2", "0"]]);
+    check("f = 3/2 with phase 0: all zeros, N0 = 1", pz.fundamental.value, 1);
+
+    section("Periodicity: discrete N0 agrees with a brute-force search of the samples");
+    const smallestPeriod = function (parts) {
+      const v = peValues("discrete", parts);
+      const n = SignalLab.signals.makeIndexAxis(0, 400);
+      const x = PE.evaluateSignal(v.components, n);
+      for (let N = 1; N <= 150; N++) {
+        let same = true;
+        for (let i = 0; i + N < x.length; i++) { if (Math.abs(x[i + N] - x[i]) > 1e-9) { same = false; break; } }
+        if (same) { return N; }
+      }
+      return -1;
+    };
+    [
+      [["1/8"]], [["3/8", "0.3"]], [["1/3", "1"]], [["5/7", "2"]], [["1/2", "0.4"]], [["1/2", "0"]], [["1/4", "0"]], [["3/4", "pi/2"]],
+      [["1/4"], ["1/6"]], [["1/4"], ["1/5"]], [["1/6"], ["1/10"], ["1/15"]], [["1/4", "0"], ["-1/4", "0"]], [["1/3", "0.2"], ["4/3", "0.2"]],
+      [["1/2", "0"], ["1/3"]], [["1/2", "1"], ["1/4"]], [["0.1"], ["0.15"]], [["5/4", "1"], ["3/8", "2"]], [["1/12"], ["5/12", "1"]], [["2"], ["1/7"]]
+    ].forEach(function (parts) {
+      const formula = peAnalyze("discrete", parts).fundamental.value;
+      const brute = smallestPeriod(parts);
+      check("formula N0 = brute force for f = " + parts.map(function (p) { return p[0] + (p[1] ? "@" + p[1] : ""); }).join(" + "), formula, brute);
+    });
+
+    section("Periodicity: discrete sinusoid with an irrational frequency");
+    ["sqrt(2)/10", "pi/10", "1/pi", "sqrt(2)", "sqrt(3)/7", "pi", "1/(2*pi)", "sqrt(1/2)"].forEach(function (f) {
+      const a = peAnalyze("discrete", [[f]]);
+      checkTrue("f = " + f + " is aperiodic", !a.periodic);
+      checkTrue("f = " + f + " has no fundamental period", a.fundamental === null);
+      checkText("f = " + f + " verdict", a.verdict, "Aperiodic");
+    });
+    checkTrue("the reason says f is irrational", /irrational/.test(peAnalyze("discrete", [["sqrt(2)/10"]]).reasons.join(" ")));
+    checkTrue("an irrational f with phase 0 is still aperiodic", !peAnalyze("discrete", [["sqrt(2)/10", "0"]]).periodic);
+    checkTrue("a rational plus an irrational discrete term is aperiodic", !peAnalyze("discrete", [["1/4"], ["sqrt(2)/10"]]).periodic);
+    checkTrue("two irrational discrete terms are aperiodic", !peAnalyze("discrete", [["sqrt(2)/10"], ["pi/10"]]).periodic);
+    checkTrue("the same irrational frequency twice is still aperiodic", !peAnalyze("discrete", [["sqrt(2)/10"], ["sqrt(2)/10", "1"]]).periodic);
+    pz = peAnalyze("discrete", [["sqrt(2)/10", "0"], ["-sqrt(2)/10", "0"], ["1/4"]]);
+    checkTrue("irrational terms that cancel exactly do not make the sum aperiodic", pz.periodic);
+    check("...only the surviving 1/4 counts: N0 = 4", pz.fundamental.value, 4);
+
+    section("Periodicity: decimals are exact fractions, never 'irrational'");
+    pz = peAnalyze("discrete", [["0.3333"]]);
+    checkTrue("discrete f = 0.3333 is periodic", pz.periodic);
+    check("discrete f = 0.3333 = 3333/10000: N0 = 10000", pz.fundamental.value, 10000);
+    check("discrete f = 0.333 = 333/1000: N0 = 1000", peAnalyze("discrete", [["0.333"]]).fundamental.value, 1000);
+    check("discrete f = 1/3 is not 0.3333: N0 = 3", peAnalyze("discrete", [["1/3"]]).fundamental.value, 3);
+    pz = peAnalyze("discrete", [["0.1414213562"]]);
+    checkTrue("a decimal that looks like sqrt(2)/10 is periodic (it is an exact fraction)", pz.periodic);
+    checkText("...with the huge exact period N0 = 5000000000", pz.fundamental.text, "5000000000 samples");
+    checkTrue("the notes warn that a decimal is read as a fraction", /read as the exact fraction/.test(pz.notes.join(" ")));
+    pz = peAnalyze("continuous", [["1"], ["1.4142"]]);
+    checkTrue("continuous 1 Hz + 1.4142 Hz is periodic (1.4142 is the fraction 7071/5000)", pz.periodic);
+    checkText("...with T0 = 5000 s", pz.fundamental.text, "5000 s");
+    pz = peAnalyze("continuous", [["1"], ["3.14159"]]);
+    checkTrue("continuous 1 Hz + 3.14159 Hz is periodic: 3.14159 is not pi", pz.periodic);
+    checkText("...with T0 = 100000 s", pz.fundamental.text, "100000 s");
+    checkTrue("1 Hz + pi Hz is aperiodic (the exact pi)", !peAnalyze("continuous", [["1"], ["pi"]]).periodic);
+
+    section("Periodicity: sums of continuous sinusoids with rational ratios");
+    checkText("1/2 Hz + 3/4 Hz: T0 = 4 s", peText("continuous", [["1/2"], ["3/4"]]), "4 s");
+    checkText("0.5 Hz + 0.75 Hz (decimals): T0 = 4 s", peText("continuous", [["0.5"], ["0.75"]]), "4 s");
+    checkText("2 Hz + 3 Hz: T0 = 1 s", peText("continuous", [["2"], ["3"]]), "1 s");
+    checkText("1 Hz + 2 Hz + 3 Hz: T0 = 1 s", peText("continuous", [["1"], ["2"], ["3"]]), "1 s");
+    checkText("1/2 Hz + 1/3 Hz: T0 = 6 s", peText("continuous", [["1/2"], ["1/3"]]), "6 s");
+    checkText("1 Hz + 1.5 Hz: T0 = 2 s", peText("continuous", [["1"], ["1.5"]]), "2 s");
+    checkText("4 Hz + 6 Hz: T0 = 1/2 s (gcd = 2 Hz)", peText("continuous", [["4"], ["6"]]), "1/2 s");
+    checkText("2/3 Hz + 4/5 Hz: T0 = 15/2 s", peText("continuous", [["2/3"], ["4/5"]]), "15/2 s");
+    checkText("3 Hz + 5 Hz + 7 Hz: T0 = 1 s", peText("continuous", [["3"], ["5"], ["7"]]), "1 s");
+    checkText("10 Hz + 15 Hz + 25 Hz: T0 = 1/5 s", peText("continuous", [["10"], ["15"], ["25"]]), "1/5 s");
+    checkText("pi Hz + 2*pi Hz: T0 = 1/pi s", peText("continuous", [["pi"], ["2*pi"]]), "1/π s");
+    checkText("3*pi/2 Hz + pi Hz: T0 = 2/pi s", peText("continuous", [["3*pi/2"], ["pi"]]), "2/π s");
+    checkText("sqrt(2) Hz + sqrt(8) Hz: T0 = sqrt(2)/2 s", peText("continuous", [["sqrt(2)"], ["sqrt(8)"]]), "√2/2 s");
+    checkText("sqrt(2) Hz + 3*sqrt(2)/2 Hz: T0 = sqrt(2) s", peText("continuous", [["sqrt(2)"], ["3*sqrt(2)/2"]]), "√2 s");
+    checkText("the same frequency twice: T0 = 1 s", peText("continuous", [["1"], ["1", "1.3"]]), "1 s");
+    checkText("a constant added does not change T0", peText("continuous", [["1/2"], ["3/4"], ["0"]]), "4 s");
+    checkText("a sum is periodic whatever the amplitudes and phases", peText("continuous", [["1/2", "2", "7"], ["3/4", "-1", "0.3"]]), "4 s");
+    checkText("T0 is the least common multiple of the periods 2 s and 4/3 s", peText("continuous", [["1/2"], ["3/4"]]), "4 s");
+    checkTrue("a periodic sum has the verdict Periodic", peAnalyze("continuous", [["1/2"], ["3/4"]]).verdict === "Periodic");
+    checkTrue("the reason for a periodic sum mentions the gcd and the ratios", /greatest common divisor/.test(peAnalyze("continuous", [["1/2"], ["3/4"]]).reasons.join(" ")) && /rational/.test(peAnalyze("continuous", [["1/2"], ["3/4"]]).reasons.join(" ")));
+    [[["1/2"], ["3/4"]], [["2"], ["3"]], [["1/2"], ["1/3"]], [["4"], ["6"]], [["2/3"], ["4/5"]], [["pi"], ["2*pi"]], [["1"], ["1.5"], ["2.5"]]].forEach(function (parts) {
+      const v = peValues("continuous", parts);
+      const T0 = PE.analyze(v).fundamental.value;
+      const label = parts.map(function (p) { return p[0]; }).join(" + ");
+      check("numerical check: x(t + T0) = x(t) for " + label, PE.verifyPeriod(v, T0), 0);
+      [2, 3, 4, 5].forEach(function (k) {
+        checkTrue("numerical check: T0/" + k + " is NOT a period for " + label, PE.verifyPeriod(v, T0 / k) > 1e-3);
+      });
+    });
+
+    section("Periodicity: sums of continuous sinusoids with irrational ratios");
+    [[["1"], ["sqrt(2)"]], [["1"], ["pi"]], [["sqrt(2)"], ["sqrt(3)"]], [["pi"], ["sqrt(2)"]], [["1/2"], ["pi/2"]], [["2"], ["sqrt(2)"]],
+     [["1"], ["2"], ["sqrt(2)"]], [["1"], ["1/pi"]], [["pi"], ["pi*pi"]], [["sqrt(2)"], ["sqrt(2)*pi"]], [["3"], ["sqrt(3)"]], [["sqrt(6)"], ["sqrt(2)"]]].forEach(function (parts) {
+      const a = peAnalyze("continuous", parts);
+      const label = parts.map(function (p) { return p[0]; }).join(" + ");
+      checkTrue("aperiodic: " + label, !a.periodic);
+      checkTrue("no fundamental period: " + label, a.fundamental === null);
+    });
+    checkText("verdict for 1 Hz + sqrt(2) Hz", peAnalyze("continuous", [["1"], ["sqrt(2)"]]).verdict, "Aperiodic");
+    checkTrue("the reason names an irrational ratio", /irrational/.test(peAnalyze("continuous", [["1"], ["sqrt(2)"]]).reasons.join(" ")));
+    checkTrue("the reason mentions pi when pi is the cause", /π/.test(peAnalyze("continuous", [["1"], ["pi"]]).reasons.join(" ")));
+    checkTrue("the reason mentions a square root when that is the cause", /square root/.test(peAnalyze("continuous", [["sqrt(2)"], ["sqrt(3)"]]).reasons.join(" ")));
+    checkTrue("the notes say a plot cannot prove aperiodicity", /finite plot/.test(peAnalyze("continuous", [["1"], ["sqrt(2)"]]).notes.join(" ")));
+    checkTrue("one irrational ratio among three terms makes the sum aperiodic", !peAnalyze("continuous", [["1/2"], ["3/4"], ["sqrt(2)"]]).periodic);
+    checkTrue("sqrt(2) and sqrt(8) are NOT an irrational ratio (it is 2)", peAnalyze("continuous", [["sqrt(2)"], ["sqrt(8)"]]).periodic);
+    checkTrue("pi and 3*pi are NOT an irrational ratio (it is 3)", peAnalyze("continuous", [["pi"], ["3*pi"]]).periodic);
+    checkTrue("sqrt(2) and sqrt(1/2) are NOT an irrational ratio (it is 2)", peAnalyze("continuous", [["sqrt(2)"], ["sqrt(1/2)"]]).periodic);
+    checkTrue("a finite plot that looks repeating does not matter: 1 Hz + 1.4142 Hz decimal is periodic, exact sqrt(2) is not",
+      peAnalyze("continuous", [["1"], ["1.4142"]]).periodic && !peAnalyze("continuous", [["1"], ["sqrt(2)"]]).periodic);
+
+    section("Periodicity: terms that cancel are not counted");
+    pz = peAnalyze("continuous", [["1", "0"], ["1", "pi"]]);
+    checkTrue("sin(2 pi t) + sin(2 pi t + pi) = 0: constant", pz.constant && pz.periodic && pz.fundamental === null);
+    pz = peAnalyze("continuous", [["1", "0"], ["-1", "0"]]);
+    checkTrue("sin(2 pi t) + sin(-2 pi t) = 0: constant", pz.constant);
+    pz = peAnalyze("continuous", [["sqrt(2)", "0"], ["sqrt(2)", "pi"], ["1"]]);
+    checkTrue("an irrational term that cancels does not make the sum aperiodic", pz.periodic);
+    checkText("...only the surviving 1 Hz counts: T0 = 1 s", pz.fundamental.text, "1 s");
+    pz = peAnalyze("continuous", [["1", "0"], ["1", "pi"], ["3/2"]]);
+    checkText("a cancelled 1 Hz leaves 3/2 Hz: T0 = 2/3 s", pz.fundamental.text, "2/3 s");
+    pz = peAnalyze("continuous", [["1", "0.5", "2"], ["1", "0.5", "1"]]);
+    checkText("same frequency and phase: amplitudes add, T0 = 1 s", pz.fundamental.text, "1 s");
+    checkTrue("the reasons explain the merge", /add up to ONE sinusoid/.test(pz.reasons.join(" ")));
+    pz = peAnalyze("continuous", [["1", "0", "2"], ["1", "pi", "1"]]);
+    checkText("amplitudes 2 and 1 with opposite phase leave amplitude 1: T0 = 1 s", pz.fundamental.text, "1 s");
+    checkTrue("...and it is not flagged constant", !pz.constant);
+    pz = peAnalyze("discrete", [["1/4", "0"], ["-1/4", "0"]]);
+    checkTrue("discrete sin(pi n/2) + sin(-pi n/2) = 0: constant", pz.constant);
+    check("...N0 = 1", pz.fundamental.value, 1);
+    pz = peAnalyze("discrete", [["1/3", "0.2"], ["4/3", "0.2"]]);
+    check("discrete f = 1/3 and 4/3 give the same samples and add: N0 = 3", pz.fundamental.value, 3);
+    pz = peAnalyze("discrete", [["1/6", "0"], ["5/6", "0"], ["1/4"]]);
+    check("discrete f = 1/6 and 5/6 (= -1/6 mod 1) cancel: only 1/4 is left, N0 = 4", pz.fundamental.value, 4);
+
+    section("Periodicity: sums of discrete sinusoids, N0 = lcm of the denominators");
+    check("1/4 and 1/6: N0 = lcm(4, 6) = 12", peAnalyze("discrete", [["1/4"], ["1/6"]]).fundamental.value, 12);
+    check("1/4 and 1/5: N0 = 20", peAnalyze("discrete", [["1/4"], ["1/5"]]).fundamental.value, 20);
+    check("1/8 and 3/8: N0 = 8", peAnalyze("discrete", [["1/8"], ["3/8"]]).fundamental.value, 8);
+    check("1/6, 1/10 and 1/15: N0 = 30", peAnalyze("discrete", [["1/6"], ["1/10"], ["1/15"]]).fundamental.value, 30);
+    check("1/2 and 1/3: N0 = 6", peAnalyze("discrete", [["1/2", "1"], ["1/3"]]).fundamental.value, 6);
+    check("0.1 and 0.15 (decimals 1/10 and 3/20): N0 = 20", peAnalyze("discrete", [["0.1"], ["0.15"]]).fundamental.value, 20);
+    checkText("the reason shows the lcm", /lcm\(4, 6\) = 12/.test(peAnalyze("discrete", [["1/4"], ["1/6"]]).reasons.join(" ")) ? "yes" : "no", "yes");
+
+    section("Periodicity: input checking");
+    const peErrors = function (changes, mode) {
+      return PE.validateInputs({ mode: mode || "continuous", window: "", components: [Object.assign({ amplitude: "1", frequency: "2", phase: "0" }, changes)] });
+    };
+    checkTrue("a good continuous input is accepted", peErrors({}).ok);
+    checkTrue("a good discrete input is accepted", peErrors({ frequency: "3/8" }, "discrete").ok);
+    checkTrue("fractions are accepted for frequency", peErrors({ frequency: "3/4" }).ok);
+    checkTrue("pi and sqrt are accepted for frequency", peErrors({ frequency: "2*pi" }).ok && peErrors({ frequency: "sqrt(2)" }).ok);
+    checkTrue("pi/2 is accepted for the phase", peErrors({ phase: "pi/2" }).ok);
+    checkTrue("a negative frequency is accepted", peErrors({ frequency: "-2" }).ok);
+    checkTrue("frequency 0 is accepted", peErrors({ frequency: "0" }).ok);
+    checkTrue("an empty frequency is refused", "frequency" in peErrors({ frequency: "" }).errors.components[0]);
+    checkTrue("a text frequency is refused", "frequency" in peErrors({ frequency: "fast" }).errors.components[0]);
+    checkTrue("a frequency such as 1/0 is refused", "frequency" in peErrors({ frequency: "1/0" }).errors.components[0]);
+    checkTrue("a frequency sum such as 1+sqrt(2) is refused", "frequency" in peErrors({ frequency: "1+sqrt(2)" }).errors.components[0]);
+    checkTrue("the frequency message explains what to type", /whole number|fraction/.test(peErrors({ frequency: "fast" }).errors.components[0].frequency));
+    checkTrue("continuous frequency above 100 Hz is refused", "frequency" in peErrors({ frequency: "101" }).errors.components[0]);
+    checkTrue("continuous frequency 100 Hz is accepted", peErrors({ frequency: "100" }).ok);
+    checkTrue("discrete frequency above 100 is refused", "frequency" in peErrors({ frequency: "250" }, "discrete").errors.components[0]);
+    checkTrue("an empty amplitude is refused", "amplitude" in peErrors({ amplitude: "" }).errors.components[0]);
+    checkTrue("amplitude 0 is refused", "amplitude" in peErrors({ amplitude: "0" }).errors.components[0]);
+    checkTrue("a negative amplitude is refused", "amplitude" in peErrors({ amplitude: "-1" }).errors.components[0]);
+    checkTrue("amplitude above 100 is refused", "amplitude" in peErrors({ amplitude: "101" }).errors.components[0]);
+    checkTrue("a text phase is refused", "phase" in peErrors({ phase: "abc" }).errors.components[0]);
+    checkTrue("an empty phase is refused", "phase" in peErrors({ phase: "" }).errors.components[0]);
+    checkTrue("a phase above 1000 is refused", "phase" in peErrors({ phase: "1001" }).errors.components[0]);
+    checkTrue("no components is refused", !PE.validateInputs({ mode: "continuous", window: "", components: [] }).ok);
+    const sevenParts = []; for (let i = 0; i < 7; i++) { sevenParts.push({ amplitude: "1", frequency: "1", phase: "0" }); }
+    checkTrue("more than 4 signals is refused", !PE.validateInputs({ mode: "continuous", window: "", components: sevenParts.slice(0, 5) }).ok);
+    checkTrue("exactly 4 signals is accepted", PE.validateInputs({ mode: "continuous", window: "", components: sevenParts.slice(0, 4) }).ok);
+    checkTrue("the waveform defaults to sine", PE.validateInputs({ mode: "continuous", window: "", components: sevenParts.slice(0, 1) }).values.components[0].type === "sine");
+    checkTrue("cosine is accepted as a waveform", PE.validateInputs({ mode: "continuous", window: "", components: [{ type: "cosine", amplitude: "1", frequency: "1", phase: "0" }] }).ok);
+    checkTrue("a square wave is refused here (sine or cosine only)", "type" in PE.validateInputs({ mode: "continuous", window: "", components: [{ type: "square", amplitude: "1", frequency: "1", phase: "0" }] }).errors.components[0]);
+    checkTrue("an unknown mode is refused", !PE.validateInputs({ mode: "analog", window: "", components: sevenParts.slice(0, 1) }).ok);
+    const withWindow = function (text, mode, frequency) {
+      return PE.validateInputs({ mode: mode, window: text, components: [{ amplitude: "1", frequency: frequency || "1", phase: "0" }] });
+    };
+    checkTrue("an empty window means automatic", withWindow("", "continuous").ok && withWindow("", "continuous").values.window === null);
+    checkTrue("window 10 s is accepted", withWindow("10", "continuous").ok);
+    checkTrue("window 0 is refused", !withWindow("0", "continuous").ok);
+    checkTrue("a negative window is refused", !withWindow("-5", "continuous").ok);
+    checkTrue("a text window is refused", !withWindow("long", "continuous").ok);
+    checkTrue("a continuous window above 100 s is refused", !withWindow("101", "continuous").ok);
+    checkTrue("too many cycles in the window is refused", !withWindow("100", "continuous", "10").ok);
+    checkTrue("a discrete window of 60 is accepted", withWindow("60", "discrete", "1/8").ok);
+    checkTrue("a discrete window of 10.5 is refused (not a whole number)", !withWindow("10.5", "discrete", "1/8").ok);
+    checkTrue("a discrete window above 200 is refused", !withWindow("201", "discrete", "1/8").ok);
+    const bad = PE.validateInputs({ mode: "continuous", window: "", components: [{ amplitude: "x", frequency: "y", phase: "z" }, { amplitude: "1", frequency: "1", phase: "0" }] });
+    checkTrue("errors are reported per component and per field", "amplitude" in bad.errors.components[0] && "frequency" in bad.errors.components[0] && "phase" in bad.errors.components[0] && Object.keys(bad.errors.components[1]).length === 0);
+
+    // Short builder: parts are [frequency, phase, amplitude, waveform]
+    const peV = function (mode, parts, windowText) {
+      const r = PE.validateInputs({
+        mode: mode, window: windowText || "",
+        components: parts.map(function (p) { return { frequency: p[0], phase: p[1] === undefined ? "0" : p[1], amplitude: p[2] === undefined ? "1" : p[2], type: p[3] || "sine" }; })
+      });
+      if (!r.ok) { throw new Error("test input rejected: " + JSON.stringify(r.errors)); }
+      return r.values;
+    };
+    const peDraw = function (mode, parts, windowText) { const v = peV(mode, parts, windowText); const a = PE.analyze(v); return { v: v, a: a, set: PE.buildPlots(v, a) }; };
+    const lastPlot = function (d) { return d.set.plots[d.set.plots.length - 1]; };
+
+    section("Periodicity: which plots are drawn");
+    let d = peDraw("continuous", [["2"]]);
+    check("a single signal gives one plot", d.set.plots.length, 1);
+    checkText("...of kind 'signal'", d.set.plots[0].key, "signal");
+    d = peDraw("continuous", [["1"], ["2"]]);
+    check("a sum of two signals gives three plots: Signal 1, Signal 2, the sum", d.set.plots.length, 3);
+    checkTrue("the plot kinds are component, component, sum", d.set.plots[0].key === "component" && d.set.plots[1].key === "component" && d.set.plots[2].key === "sum");
+    checkTrue("the titles say Signal 1, Signal 2 and Result (sum)", /^Signal 1/.test(d.set.plots[0].title) && /^Signal 2/.test(d.set.plots[1].title) && /^Result \(sum\)/.test(d.set.plots[2].title));
+    d = peDraw("continuous", [["1"], ["2"], ["3"], ["4"]]);
+    check("four signals give five plots", d.set.plots.length, 5);
+    checkTrue("all plots share one time axis", d.set.plots.every(function (p) { return p.t === d.set.plots[0].t; }));
+    d = peDraw("continuous", [["1"], ["2"]]);
+    let sumCheck = 0;
+    for (let i = 0; i < d.set.plots[2].y.length; i++) { sumCheck = Math.max(sumCheck, Math.abs(d.set.plots[2].y[i] - (d.set.plots[0].y[i] + d.set.plots[1].y[i]))); }
+    check("the Result plot is exactly Signal 1 + Signal 2", sumCheck, 0);
+    check("Signal 1 at t = 0 with phase 0.5", peDraw("continuous", [["1", "0.5"], ["2"]]).set.plots[0].y[0], Math.sin(0.5));
+    checkTrue("x and t have the same length in every plot", d.set.plots.every(function (p) { return p.y.length === p.t.length; }));
+
+    section("Periodicity: automatic plot window");
+    d = peDraw("continuous", [["1/2"], ["3/4"]]);
+    check("periodic continuous: the window is 3 periods (12 s)", lastPlot(d).t[lastPlot(d).t.length - 1], 12);
+    check("the window starts at 0", lastPlot(d).t[0], 0);
+    d = peDraw("continuous", [["1"], ["sqrt(2)"]]);
+    checkTrue("aperiodic continuous: about 5 cycles of the slowest wave (5 s)", Math.abs(lastPlot(d).t[lastPlot(d).t.length - 1] - 5) < 1e-9);
+    d = peDraw("continuous", [["0"]]);
+    checkTrue("constant continuous: drawn, nothing marked", lastPlot(d).period === null && lastPlot(d).t.length > 2);
+    d = peDraw("continuous", [["2"]], "3");
+    check("a typed window is used: 3 s", lastPlot(d).t[lastPlot(d).t.length - 1], 3);
+    d = peDraw("discrete", [["1/4"], ["1/6"]]);
+    check("periodic discrete: three periods, n = 0..36", lastPlot(d).t[lastPlot(d).t.length - 1], 36);
+    checkTrue("discrete indices are whole numbers", lastPlot(d).t.every(function (n) { return Number.isInteger(n); }));
+    d = peDraw("discrete", [["sqrt(2)/10"]]);
+    check("aperiodic discrete: 100 samples", lastPlot(d).t.length, 100);
+    d = peDraw("discrete", [["1/8"]], "30");
+    check("a typed discrete window is used: n = 0..30", lastPlot(d).t[lastPlot(d).t.length - 1], 30);
+    check("discrete x[1] for f = 1/8, phase 0.785", peDraw("discrete", [["1/8", "0.785"]]).set.plots[0].y[1], Math.sin(2 * Math.PI / 8 + 0.785));
+
+    section("Period highlighting: continuous, the span is the mathematical fundamental period");
+    d = peDraw("continuous", [["2"]]);
+    let pl = d.set.plots[0];
+    checkTrue("single sine f = 2: a period is marked", pl.period !== null);
+    checkText("...of kind continuous", pl.period.kind, "continuous");
+    check("...it starts at t = 0", pl.period.start, 0);
+    check("...and ends at T0 = 1/2 s", pl.period.end, 0.5);
+    checkText("...the label shows the period value", pl.period.label, "T₀ = 1/2 s");
+    checkText("...the start caption", pl.period.startLabel, "t = 0");
+    checkText("...the end caption", pl.period.endLabel, "t = 0.5 s");
+    check("the highlighted curve starts at t = 0", pl.highlight.t[0], 0);
+    checkTrue("...and ends at T0 (within one sample step)", pl.highlight.t[pl.highlight.t.length - 1] <= 0.5 + 1e-9 && pl.highlight.t[pl.highlight.t.length - 1] > 0.5 - (pl.t[1] - pl.t[0]) * 1.01);
+    checkTrue("the highlight is a piece of the plotted data", pl.highlight.t.every(function (t, i) { return Math.abs(t - pl.t[i]) < 1e-12 && Math.abs(pl.highlight.y[i] - pl.y[i]) < 1e-12; }));
+    check("cosine f = 3/4: the period ends at 4/3 s", peDraw("continuous", [["3/4", "0", "1", "cosine"]]).set.plots[0].period.end, 4 / 3);
+    check("negative frequency f = -2 marks the same period (1/2 s)", peDraw("continuous", [["-2"]]).set.plots[0].period.end, 0.5);
+    check("f = pi: the period ends at 1/pi", peDraw("continuous", [["pi"]]).set.plots[0].period.end, 1 / Math.PI);
+    checkText("f = pi: the label shows the exact value and a decimal", peDraw("continuous", [["pi"]]).set.plots[0].period.label, "T₀ = 1/π ≈ 0.318310 s".replace("0.318310", PE.formatNumber(1 / Math.PI)));
+    // the marked span really is a period of the plotted signal, and not a shorter span
+    [[["2"]], [["3/4", "0.3", "2", "cosine"]], [["1"], ["2"]], [["1/2"], ["3/4"]], [["pi"], ["2*pi"]], [["2/3"], ["4/5", "1"]]].forEach(function (parts) {
+      const dd = peDraw("continuous", parts);
+      const sp = lastPlot(dd).period;
+      const label = parts.map(function (q) { return q[0]; }).join(" + ");
+      checkTrue("marked: " + label, sp !== null);
+      check("the marked span is a true period of the signal: " + label, PE.verifyPeriod(dd.v, sp.end), 0);
+      [2, 3, 4, 5].forEach(function (k) {
+        checkTrue("the marked span is the SMALLEST period (T0/" + k + " is not one): " + label, PE.verifyPeriod(dd.v, sp.end / k) > 1e-3);
+      });
+      check("the marked span equals the analysed fundamental period: " + label, sp.end, dd.a.fundamental.value);
+    });
+
+    section("Period highlighting: sums show each signal's period and the common period");
+    d = peDraw("continuous", [["1"], ["2"]]);
+    check("Signal 1 (1 Hz) is marked 0 .. 1 s", d.set.plots[0].period.end, 1);
+    check("Signal 2 (2 Hz) is marked 0 .. 1/2 s", d.set.plots[1].period.end, 0.5);
+    check("the sum is marked 0 .. T0 = 1 s", d.set.plots[2].period.end, 1);
+    checkText("the labels use T₁, T₂ and T₀", d.set.plots.map(function (q) { return q.period.text.split(" ")[0]; }).join(" "), "T₁ T₂ T₀");
+    d = peDraw("continuous", [["1/2"], ["3/4"]]);
+    check("1/2 Hz is marked 0 .. 2 s", d.set.plots[0].period.end, 2);
+    check("3/4 Hz is marked 0 .. 4/3 s", d.set.plots[1].period.end, 4 / 3);
+    check("the sum is marked 0 .. 4 s (the common period)", d.set.plots[2].period.end, 4);
+    checkTrue("the sum's period is longer than each signal's own", d.set.plots[2].period.end > d.set.plots[0].period.end && d.set.plots[2].period.end > d.set.plots[1].period.end);
+    d = peDraw("continuous", [["1"], ["sqrt(2)"]]);
+    checkTrue("aperiodic sum: the Result plot has NO marked period", lastPlot(d).period === null && lastPlot(d).highlight === null);
+    checkTrue("...but each signal alone is periodic and is marked", d.set.plots[0].period !== null && d.set.plots[1].period !== null);
+    check("...Signal 2 (sqrt(2) Hz) ends at sqrt(2)/2 s", d.set.plots[1].period.end, Math.SQRT2 / 2);
+    d = peDraw("continuous", [["1", "0"], ["1", "pi"]]);
+    checkTrue("a sum that cancels to a constant has no marked period", lastPlot(d).period === null);
+    d = peDraw("continuous", [["0"]]);
+    checkTrue("f = 0: no marked period", d.set.plots[0].period === null);
+    d = peDraw("continuous", [["1/2"], ["3/4"]], "3");
+    checkTrue("a period longer than the window is not marked", lastPlot(d).period === null);
+    checkTrue("...and a note says why", /longer than the plotted window/.test(lastPlot(d).periodNote));
+    checkTrue("...while the shorter signals are still marked", d.set.plots[0].period !== null);
+
+    let rb;
+    section("Period highlighting: component periods are never presented as the fundamental period");
+    d = peDraw("continuous", [["1"], ["2"]]);
+    checkText("periodic sum: Signal 1 is a component period", d.set.plots[0].period.role, "component");
+    checkText("periodic sum: Signal 2 is a component period", d.set.plots[1].period.role, "component");
+    checkText("periodic sum: the Result carries the fundamental period", d.set.plots[2].period.role, "fundamental");
+    checkText("a component label says 'Component period'", d.set.plots[0].period.label, "Component period T₁ = 1 s");
+    checkText("the other component label", d.set.plots[1].period.label, "Component period T₂ = 1/2 s");
+    checkText("the Result label is the fundamental period", d.set.plots[2].period.label, "T₀ = 1 s");
+    checkTrue("only the Result plot has the fundamental role", d.set.plots.filter(function (q) { return q.period && q.period.role === "fundamental"; }).length === 1);
+    d = peDraw("continuous", [["1"], ["sqrt(2)"]]);
+    checkTrue("aperiodic sum: no plot at all carries a fundamental period", d.set.plots.every(function (q) { return !q.period || q.period.role !== "fundamental"; }));
+    checkTrue("aperiodic sum: the Result has nothing marked", lastPlot(d).period === null && lastPlot(d).highlight === null);
+    checkTrue("aperiodic sum: the signals that ARE marked are labelled as component periods", d.set.plots[0].period.label.indexOf("Component period") === 0 && d.set.plots[1].period.label.indexOf("Component period") === 0);
+    checkTrue("aperiodic sum: no label calls any period T₀", d.set.plots.every(function (q) { return !q.period || q.period.label.indexOf("T₀") === -1; }));
+    checkTrue("aperiodic sum: the analysis has no fundamental period", d.a.fundamental === null);
+    d = peDraw("continuous", [["2"]]);
+    checkText("a single signal is the result itself: fundamental period", d.set.plots[0].period.role, "fundamental");
+    checkText("...labelled T₀ (not as a component)", d.set.plots[0].period.label, "T₀ = 1/2 s");
+    d = peDraw("discrete", [["1/4"], ["1/6"]]);
+    checkText("discrete: component label", d.set.plots[0].period.label, "Component period N₁ = 4 samples (n = 0 … 3)");
+    checkText("discrete: the other component label", d.set.plots[1].period.label, "Component period N₂ = 6 samples (n = 0 … 5)");
+    checkText("discrete: the Result label", d.set.plots[2].period.label, "N₀ = 12 samples (n = 0 … 11)");
+    checkTrue("discrete: only the Result is the fundamental period", d.set.plots[0].period.role === "component" && d.set.plots[1].period.role === "component" && d.set.plots[2].period.role === "fundamental");
+    d = peDraw("discrete", [["1/4"], ["sqrt(2)/10"]]);
+    checkTrue("discrete aperiodic sum: the rational signal is a component period and the Result has no period", d.set.plots[0].period.role === "component" && lastPlot(d).period === null);
+    d = peDraw("continuous", [["1/2"], ["3/4"]], "3");
+    checkTrue("a component period that is too long for the window says 'Component period' in its note", /^Component period/.test(d.set.plots[0].periodNote) || d.set.plots[0].periodNote === "");
+    d = peDraw("continuous", [["1/3"], ["1/2"]], "5");
+    checkTrue("too-long note for the common period does not say component", /^T₀ = 6 s is longer than the plotted window/.test(lastPlot(d).periodNote));
+    checkTrue("...while a too-long component period is named as such", /^Component period T₁ = 5 s is longer than the plotted window/.test(peDraw("continuous", [["1/5"], ["1/2"]], "3").set.plots[0].periodNote));
+    // the explanation separates the two kinds of period
+    rb = PE.analyze(peV("continuous", [["1"], ["2"]]));
+    checkTrue("steps: the per-signal step is named as the period of each signal on its own", rb.steps.some(function (st) { return st.title === "Find the period of each signal on its own"; }));
+    checkTrue("steps (periodic sum): the per-signal periods are called component periods and lead to the common T0", /component periods: the periods of the separate signals\. The sum repeats only when all of them repeat together, at the common period T₀/.test(rb.reasons.join(" ")));
+    rb = PE.analyze(peV("continuous", [["1"], ["sqrt(2)"]]));
+    checkTrue("steps (aperiodic sum): the per-signal periods are NOT a period of the sum", /component periods: the periods of the separate signals, NOT a period of the sum/.test(rb.reasons.join(" ")));
+    checkTrue("steps (aperiodic sum): no step claims a common period T₀ = ...", !/T₀ = 1\/f₀/.test(rb.reasons.join(" ")));
+    checkTrue("steps (aperiodic sum): the exact lines T₁ and T₂ are still given", rb.reasons.indexOf("T₁ = 1/|f₁| = 1 s") !== -1 && /^T₂ = 1\/\|f₂\| = √2\/2 s/.test(rb.reasons.filter(function (l) { return /^T₂/.test(l); })[0]));
+
+    section("Periodicity: constant signals stay PERIODIC and are explained");
+    rb = PE.analyze(peV("continuous", [["0", "pi/2"]]));
+    checkText("continuous f = 0: the verdict stays Periodic", rb.verdict, "Periodic");
+    checkTrue("...it is periodic and flagged constant", rb.periodic === true && rb.constant === true);
+    checkTrue("...and no fundamental period is reported", rb.fundamental === null);
+    checkTrue("the headline says it repeats for every positive time shift", /repeats for every positive time shift/.test(rb.headline));
+    checkTrue("the headline says there is no smallest positive period", /no smallest positive period/.test(rb.headline));
+    checkTrue("the short reason says every positive shift T works", /every positive time shift T/.test(rb.why) && /no fundamental period/.test(rb.why));
+    checkTrue("the steps show x(t + T) = x(t) for every T > 0", rb.reasons.indexOf("A constant repeats for every positive time shift: x(t + T) = x(t) for every T > 0. So the signal is periodic.") !== -1);
+    checkTrue("the steps explain that no smallest period exists", /SMALLEST positive period/.test(rb.reasons.join(" ")) && /NO fundamental period T₀/.test(rb.reasons.join(" ")));
+    rb = PE.analyze(peV("continuous", [["1", "0"], ["1", "pi"]]));
+    checkTrue("a sum that cancels to a constant gets the same explanation", rb.periodic && rb.constant && rb.fundamental === null && /every positive time shift/.test(rb.reasons.join(" ")));
+    rb = PE.analyze(peV("discrete", [["0", "pi/2"]]));
+    checkTrue("discrete constant stays Periodic", rb.verdict === "Periodic" && rb.constant === true);
+    check("discrete constant: the smallest positive whole shift is N0 = 1 (unchanged)", rb.fundamental.value, 1);
+    checkTrue("discrete constant: every positive whole shift is a period", /Every positive whole-number shift/.test(rb.reasons.join(" ")));
+    checkTrue("discrete constant: explains why a smallest shift exists here, unlike continuous time", /there IS a smallest positive one, N = 1/.test(rb.reasons.join(" ")) && /continuous time a constant has no smallest positive shift/.test(rb.reasons.join(" ")));
+
+    section("Period highlighting: discrete, correct integer sample indices");
+    d = peDraw("discrete", [["3/8"]]);
+    pl = d.set.plots[0];
+    checkText("f = 3/8: the marker is discrete", pl.period.kind, "discrete");
+    check("...it starts at sample n = 0", pl.period.start, 0);
+    check("...and ends at the LAST sample of the period, n = 7", pl.period.end, 7);
+    check("...it covers N0 = 8 samples", pl.period.count, 8);
+    check("the highlight has 8 stems", pl.highlight.t.length, 8);
+    checkTrue("the highlighted indices are exactly 0..7", pl.highlight.t.join(",") === "0,1,2,3,4,5,6,7");
+    checkText("the label shows N0 and the sample range", pl.period.label, "N₀ = 8 samples (n = 0 … 7)");
+    checkText("the start caption", pl.period.startLabel, "n = 0");
+    checkText("the end caption", pl.period.endLabel, "n = 7");
+    check("the next sample starts the next period: x[8] = x[0]", pl.y[8], pl.y[0]);
+    check("...and x[9] = x[1]", pl.y[9], pl.y[1]);
+    d = peDraw("discrete", [["1/4"], ["1/6"]]);
+    checkTrue("1/4 + 1/6: Signal 1 covers n = 0..3", d.set.plots[0].period.end === 3 && d.set.plots[0].period.count === 4);
+    checkTrue("1/4 + 1/6: Signal 2 covers n = 0..5", d.set.plots[1].period.end === 5 && d.set.plots[1].period.count === 6);
+    checkTrue("1/4 + 1/6: the sum covers n = 0..11 (N0 = lcm(4, 6) = 12)", d.set.plots[2].period.end === 11 && d.set.plots[2].period.count === 12);
+    check("the sum highlight has 12 stems", d.set.plots[2].highlight.t.length, 12);
+    check("the sum repeats: x[12] = x[0]", d.set.plots[2].y[12], d.set.plots[2].y[0]);
+    // brute force: the marked count is the smallest N that repeats the plotted samples
+    const markedIsSmallest = function (parts) {
+      const dd = peDraw("discrete", parts);
+      const y = lastPlot(dd).y;
+      let smallest = -1;
+      for (let N = 1; N < y.length / 2; N++) {
+        let same = true;
+        for (let i = 0; i + N < y.length; i++) { if (Math.abs(y[i + N] - y[i]) > 1e-9) { same = false; break; } }
+        if (same) { smallest = N; break; }
+      }
+      return { smallest: smallest, marked: lastPlot(dd).period ? lastPlot(dd).period.count : null };
+    };
+    [[["1/8"]], [["3/8", "0.3"]], [["5/7", "1"]], [["1/4"], ["1/6"]], [["1/6"], ["1/10"], ["1/15"]], [["1/2", "0", "1", "cosine"]], [["1/3", "0.2", "1", "cosine"], ["1/4"]], [["5/4"]], [["-3/8"]]].forEach(function (parts) {
+      const r = markedIsSmallest(parts);
+      check("the marked sample count is the smallest repeating N (brute force): " + parts.map(function (q) { return q[0] + (q[3] ? "(cos)" : ""); }).join(" + "), r.marked, r.smallest);
+    });
+    d = peDraw("discrete", [["sqrt(2)/10"]]);
+    checkTrue("aperiodic discrete: nothing is marked", d.set.plots[0].period === null && d.set.plots[0].highlight === null);
+    d = peDraw("discrete", [["1/4"], ["sqrt(2)/10"]]);
+    checkTrue("one irrational frequency: the sum is not marked", lastPlot(d).period === null);
+    checkTrue("...but the rational signal alone is marked (N1 = 4)", d.set.plots[0].period !== null && d.set.plots[0].period.count === 4);
+    checkTrue("...and the irrational signal alone is not", d.set.plots[1].period === null);
+    d = peDraw("discrete", [["1/2", "0"]]);
+    checkTrue("f = 1/2 with a sine and phase 0 (all zeros): nothing is marked", d.set.plots[0].period === null);
+    d = peDraw("discrete", [["0.3333"]]);
+    checkTrue("a huge period (N0 = 10000) is not marked", d.set.plots[0].period === null);
+    checkTrue("...and a note says it is longer than the plotted window", /longer than the plotted window/.test(d.set.plots[0].periodNote));
+    check("...the first 200 samples are drawn", d.set.plots[0].t.length, 200);
+    d = peDraw("discrete", [["1/8"]], "5");
+    checkTrue("a window shorter than one period does not mark it", d.set.plots[0].period === null);
+
+    section("Period highlighting: the shared marker helper");
+    const mk = SignalLab.plot.makePeriodMarkers;
+    let mm = mk({ kind: "continuous", start: 0, end: 4, label: "T₀ = 4 s", yArrow: 1.4, startLabel: "t = 0", endLabel: "t = 4 s", windowStart: 0, windowEnd: 12 });
+    check("continuous: three shapes (band, start line, end line)", mm.shapes.length, 3);
+    checkText("the first shape is the shaded band", mm.shapes[0].type, "rect");
+    check("the band starts at the period start", mm.shapes[0].x0, 0);
+    check("the band ends at the period end", mm.shapes[0].x1, 4);
+    checkTrue("the band covers the full plot height (paper 0..1)", mm.shapes[0].y0 === 0 && mm.shapes[0].y1 === 1 && mm.shapes[0].yref === "paper");
+    checkText("the band sits behind the curve", mm.shapes[0].layer, "below");
+    checkTrue("the band is a translucent fill", /rgba\(/.test(mm.shapes[0].fillcolor));
+    checkTrue("a dashed line marks the start", mm.shapes[1].type === "line" && mm.shapes[1].x0 === 0 && mm.shapes[1].x1 === 0 && mm.shapes[1].line.dash === "dash");
+    checkTrue("a dashed line marks the end", mm.shapes[2].type === "line" && mm.shapes[2].x0 === 4 && mm.shapes[2].x1 === 4 && mm.shapes[2].line.dash === "dash");
+    const arrows = mm.annotations.filter(function (a) { return a.showarrow; });
+    check("two arrows (one head at each end)", arrows.length, 2);
+    checkTrue("the arrows run between the two ends at the arrow height", arrows.every(function (a) { return a.y === 1.4 && a.ay === 1.4 && ((a.x === 4 && a.ax === 0) || (a.x === 0 && a.ax === 4)); }));
+    checkTrue("the arrows have heads", arrows.every(function (a) { return a.arrowhead > 0; }));
+    const labelAnn = mm.annotations.filter(function (a) { return a.text === "T₀ = 4 s"; });
+    check("the period value is written on the plot, once", labelAnn.length, 1);
+    check("...centred between the start and the end", labelAnn[0].x, 2);
+    checkTrue("the start and end captions are shown", mm.annotations.some(function (a) { return a.text === "t = 0"; }) && mm.annotations.some(function (a) { return a.text === "t = 4 s"; }));
+    checkTrue("the captions sit at their lines", mm.annotations.filter(function (a) { return a.text === "t = 0"; })[0].x === 0 && mm.annotations.filter(function (a) { return a.text === "t = 4 s"; })[0].x === 4);
+    checkTrue("the captions sit just under the arrow (same height, anchored below it)", mm.annotations.filter(function (a) { return a.text === "t = 0"; })[0].y === 1.4 && mm.annotations.filter(function (a) { return a.text === "t = 0"; })[0].yanchor === "top");
+    checkTrue("the start caption points into the band and the end caption too (anchors left / right)", mm.annotations.filter(function (a) { return a.text === "t = 0"; })[0].xanchor === "left" && mm.annotations.filter(function (a) { return a.text === "t = 4 s"; })[0].xanchor === "right");
+    const wide = mk({ kind: "continuous", start: 0, end: 4, label: "T", yArrow: 1, startLabel: "a", endLabel: "b", windowStart: 0, windowEnd: 12 });
+    const narrow = mk({ kind: "continuous", start: 0, end: 2, label: "T", yArrow: 1, startLabel: "a", endLabel: "b", windowStart: 0, windowEnd: 12 });
+    checkTrue("a band covering 1/3 of the plot gets captions", wide.annotations.length === 5);
+    checkTrue("a band covering 1/6 of the plot gets no captions (they would overlap)", narrow.annotations.length === 3);
+    const labelOf = function (m, text) { return m.annotations.filter(function (a) { return a.text === text; })[0]; };
+    const roomy = mk({ kind: "continuous", start: 0, end: 4, label: "T₀ = 4 s", yArrow: 1, windowStart: 0, windowEnd: 12 });
+    checkTrue("a label that fits its band is centred on it", labelOf(roomy, "T₀ = 4 s").x === 2 && labelOf(roomy, "T₀ = 4 s").xanchor === "center");
+    const tight = mk({ kind: "continuous", start: 0, end: 1, label: "Component period T₂ = √2/2 ≈ 0.707107 s", yArrow: 1, windowStart: 0, windowEnd: 5 });
+    checkTrue("a long label on a narrow band starts at the band's left end (so it cannot run off the plot)", labelOf(tight, "Component period T₂ = √2/2 ≈ 0.707107 s").x === 0 && labelOf(tight, "Component period T₂ = √2/2 ≈ 0.707107 s").xanchor === "left");
+    const noWindow = mk({ kind: "continuous", start: 0, end: 1, label: "A very long label for a short band", yArrow: 1 });
+    checkTrue("without window information the label stays centred (as before)", labelOf(noWindow, "A very long label for a short band").xanchor === "center");
+    const dTight = mk({ kind: "discrete", start: 0, end: 3, label: "Component period N₁ = 4 samples (n = 0 … 3)", yArrow: 1, windowStart: 0, windowEnd: 99 });
+    checkTrue("discrete: a long label on a narrow band starts at the band's left edge (-0.5)", labelOf(dTight, "Component period N₁ = 4 samples (n = 0 … 3)").x === -0.5 && labelOf(dTight, "Component period N₁ = 4 samples (n = 0 … 3)").xanchor === "left");
+    checkText("the default colour is magenta", mm.shapes[1].line.color, SignalLab.plot.COLORS.magenta);
+    mm = mk({ kind: "continuous", start: 0, end: 1, label: "T₀ = 1 s", yArrow: 1, windowStart: 0, windowEnd: 100 });
+    checkTrue("captions are left out when the band is too narrow (1 of 100)", !mm.annotations.some(function (a) { return a.text === "start" || a.text === "end"; }) && mm.annotations.length === 3);
+    checkTrue("the arrow label is still there", mm.annotations.some(function (a) { return a.text === "T₀ = 1 s"; }));
+    mm = mk({ kind: "discrete", start: 0, end: 7, label: "N₀ = 8 samples (n = 0 … 7)", yArrow: 1.4, windowStart: 0, windowEnd: 20 });
+    check("discrete: the band reaches half a sample before the first sample", mm.shapes[0].x0, -0.5);
+    check("discrete: ...and half a sample past the last sample (so it covers whole stems)", mm.shapes[0].x1, 7.5);
+    checkTrue("discrete: the lines are at the first and last sample indices", mm.shapes[1].x0 === 0 && mm.shapes[2].x0 === 7);
+    const dArrows = mm.annotations.filter(function (a) { return a.showarrow; });
+    checkTrue("discrete: the arrows span the whole band (-0.5 to 7.5)", dArrows.some(function (a) { return a.ax === -0.5 && a.x === 7.5; }) && dArrows.some(function (a) { return a.ax === 7.5 && a.x === -0.5; }));
+    check("discrete: the label is centred on the band (3.5)", mm.annotations.filter(function (a) { return /N₀/.test(a.text || ""); })[0].x, 3.5);
+    // the markers reach the real Plotly layout through plotContinuous / plotStem
+    let captured = null;
+    globalThis.Plotly = { react: function (id, traces, layout) { captured = { id: id, traces: traces, layout: layout }; } };
+    SignalLab.plot.plotContinuous("x", [{ x: [0, 1], y: [0, 1] }], { shapes: mm.shapes, annotations: mm.annotations, yRange: [-2, 2] });
+    check("plotContinuous passes the shapes to the layout", captured.layout.shapes.length, 3);
+    check("plotContinuous passes the annotations to the layout", captured.layout.annotations.length, mm.annotations.length);
+    SignalLab.plot.plotStem("x", [{ x: [0, 1], y: [0, 1] }], { shapes: mm.shapes, annotations: mm.annotations });
+    check("plotStem passes the shapes to the layout", captured.layout.shapes.length, 3);
+    SignalLab.plot.plotContinuous("x", [{ x: [0, 1], y: [0, 1] }], {});
+    checkTrue("without markers the layout has no shapes or annotations (other modules are unchanged)", captured.layout.shapes === undefined && captured.layout.annotations === undefined);
+    delete globalThis.Plotly;
+
+    section("Periodicity: cosine waveforms");
+    checkText("cosine f = 2: T0 = 1/2 s (same as a sine)", peText("continuous", [["2", "0", "1"]]) , "1/2 s");
+    const cosParts = function (f, phase, amp) { return [{ type: "cosine", frequency: f, phase: phase || "0", amplitude: amp || "1" }]; };
+    const cosAnalyze = function (mode, list) {
+      const r = PE.validateInputs({ mode: mode, window: "", components: list });
+      if (!r.ok) { throw new Error(JSON.stringify(r.errors)); }
+      return PE.analyze(r.values);
+    };
+    checkText("cosine f = 3/4: T0 = 4/3 s", cosAnalyze("continuous", cosParts("3/4")).fundamental.text, "4/3 s");
+    checkText("cosine f = -3/4: same T0", cosAnalyze("continuous", cosParts("-3/4")).fundamental.text, "4/3 s");
+    checkText("cosine f = 3/8 (discrete): N0 = 8", cosAnalyze("discrete", cosParts("3/8")).fundamental.text, "8 samples");
+    checkTrue("cosine f = sqrt(2)/10 (discrete) is aperiodic", !cosAnalyze("discrete", cosParts("sqrt(2)/10")).periodic);
+    checkTrue("cosine f = 0 is a constant", cosAnalyze("continuous", cosParts("0", "0.5")).constant);
+    check("evaluation: cos(2 pi f t + phi) at t = 0.3", PE.evaluateComponent({ type: "cosine", amplitude: 2, frequency: PE.parseExact("3/4").value, phase: 0.7 }, [0.3])[0], 2 * Math.cos(2 * Math.PI * 0.75 * 0.3 + 0.7));
+    check("evaluation: sin(2 pi f t + phi) at t = 0.3", PE.evaluateComponent({ type: "sine", amplitude: 2, frequency: PE.parseExact("3/4").value, phase: 0.7 }, [0.3])[0], 2 * Math.sin(2 * Math.PI * 0.75 * 0.3 + 0.7));
+    // merging: cos + sin at the same frequency is ONE sinusoid with amplitude sqrt(2)
+    let pc = cosAnalyze("continuous", [{ type: "cosine", frequency: "1", phase: "0", amplitude: "1" }, { type: "sine", frequency: "1", phase: "0", amplitude: "1" }]);
+    checkText("cos(2 pi t) + sin(2 pi t) = sqrt(2) sin(2 pi t + pi/4): T0 = 1 s", pc.fundamental.text, "1 s");
+    checkTrue("...merged into one sinusoid (the steps say so)", /ONE sinusoid/.test(pc.reasons.join(" ")));
+    pc = cosAnalyze("continuous", [{ type: "cosine", frequency: "1", phase: "0", amplitude: "1" }, { type: "cosine", frequency: "1", phase: "pi", amplitude: "1" }]);
+    checkTrue("cos(2 pi t) + cos(2 pi t + pi) = 0: constant", pc.constant);
+    pc = cosAnalyze("continuous", [{ type: "cosine", frequency: "1", phase: "0", amplitude: "1" }, { type: "sine", frequency: "1", phase: "pi/2", amplitude: "1" }]);
+    checkTrue("cos(2 pi t) + sin(2 pi t + pi/2): the two are equal, so the amplitude is 2 (not cancelled), T0 = 1 s", pc.fundamental !== null && pc.fundamental.text === "1 s");
+    pc = cosAnalyze("continuous", [{ type: "cosine", frequency: "1", phase: "pi/2", amplitude: "1" }, { type: "sine", frequency: "1", phase: "0", amplitude: "1" }]);
+    checkTrue("cos(2 pi t + pi/2) = -sin(2 pi t), so adding sin(2 pi t) cancels to a constant", pc.constant);
+    pc = cosAnalyze("continuous", [{ type: "cosine", frequency: "sqrt(2)", phase: "0", amplitude: "1" }, { type: "cosine", frequency: "sqrt(2)", phase: "pi", amplitude: "1" }, { type: "sine", frequency: "1", phase: "0", amplitude: "1" }]);
+    checkText("a cancelled irrational cosine pair leaves only 1 Hz: T0 = 1 s", pc.fundamental.text, "1 s");
+    checkText("discrete cos(pi n) = (-1)^n: N0 = 2", cosAnalyze("discrete", cosParts("1/2")).fundamental.text, "2 samples");
+    pc = cosAnalyze("discrete", cosParts("1/2", "pi/2"));
+    checkTrue("discrete cos(pi n + pi/2) = 0 at every n: constant", pc.constant);
+    check("...N0 = 1", pc.fundamental.value, 1);
+    pc = cosAnalyze("discrete", cosParts("3/2"));
+    check("discrete cos(3 pi n) = (-1)^n: N0 = 2", pc.fundamental.value, 2);
+    // brute-force agreement for cosines and mixed sums
+    [[["1/8", "0.3", "1", "cosine"]], [["2/5", "1", "1", "cosine"], ["1/3"]], [["1/2", "0", "1", "cosine"], ["1/4", "0", "1", "cosine"]], [["3/4", "0.5", "1", "cosine"], ["-1/4", "0.5"]]].forEach(function (parts) {
+      const dd = peDraw("discrete", parts);
+      const y = lastPlot(dd).y;
+      let smallest = -1;
+      for (let N = 1; N < y.length / 2; N++) {
+        let same = true;
+        for (let i = 0; i + N < y.length; i++) { if (Math.abs(y[i + N] - y[i]) > 1e-9) { same = false; break; } }
+        if (same) { smallest = N; break; }
+      }
+      check("discrete N0 with cosines = brute force: " + parts.map(function (q) { return q[0] + (q[3] ? "(cos)" : ""); }).join(" + "), dd.a.fundamental.value, smallest);
+    });
+
+    section("Periodicity: the result card facts (frequencies, ratio, short reason)");
+    let ra = PE.analyze(peV("continuous", [["1"], ["2"]]));
+    checkText("frequencies used: f1", ra.frequencies[0], "f₁ = 1 Hz");
+    checkText("frequencies used: f2", ra.frequencies[1], "f₂ = 2 Hz");
+    checkText("ratio of 1 Hz and 2 Hz", ra.ratio.text, "f₁/f₂ = 1/2 (rational), that is f₁ : f₂ = 1 : 2");
+    checkTrue("the ratio is flagged rational", ra.ratio.rational === true);
+    checkTrue("a short reason is given", ra.why.length > 20 && /rational/.test(ra.why));
+    ra = PE.analyze(peV("continuous", [["2", "0", "1", "cosine"], ["3"], ["4"]]));
+    checkText("three signals: whole-number proportion", ra.ratio.text, "f₁ : f₂ : f₃ = 2 : 3 : 4 (every ratio is rational)");
+    ra = PE.analyze(peV("continuous", [["1"], ["sqrt(2)"]]));
+    checkTrue("irrational ratio is labelled", /irrational/.test(ra.ratio.text) && ra.ratio.rational === false);
+    checkText("the irrational ratio text", ra.ratio.text, "f₁/f₂ = √2/2 (irrational)");
+    ra = PE.analyze(peV("continuous", [["2"]]));
+    checkTrue("a single signal has no ratio", ra.ratio === null);
+    checkText("single signal frequency label has no subscript", ra.frequencies[0], "f = 2 Hz");
+    ra = PE.analyze(peV("continuous", [["sqrt(2)", "0"], ["sqrt(2)", "pi"], ["1"]]));
+    checkTrue("a cancelled irrational pair does not appear in the ratio (only one frequency is left)", ra.ratio === null);
+    ra = PE.analyze(peV("continuous", [["sqrt(2)", "0"], ["sqrt(2)", "pi"], ["1"], ["2"]]));
+    checkTrue("a cancelled irrational pair next to two live frequencies: still periodic", ra.periodic && ra.fundamental.text === "1 s");
+    checkText("...and the ratio lists only the live frequencies (f3 and f4), not the cancelled sqrt(2)", ra.ratio.text, "f₃/f₄ = 1/2 (rational), that is f₃ : f₄ = 1 : 2");
+    checkTrue("...so the ratio is rational", ra.ratio.rational === true && !/irrational/.test(ra.ratio.text));
+    checkText("negative frequency is shown as typed", PE.analyze(peV("continuous", [["-3/4"]])).frequencies[0], "f = -3/4 Hz");
+    checkTrue("an irrational frequency also shows a decimal value", /≈ 1\.41421/.test(PE.analyze(peV("continuous", [["sqrt(2)"]])).frequencies[0]));
+    checkText("discrete frequencies are in cycles/sample", PE.analyze(peV("discrete", [["3/8"]])).frequencies[0], "f = 3/8 cycles/sample");
+    ra = PE.analyze(peV("discrete", [["1/4"], ["1/6"]]));
+    checkText("discrete ratio", ra.ratio.text, "f₁/f₂ = 3/2 (rational), that is f₁ : f₂ = 3 : 2");
+    ra = PE.analyze(peV("discrete", [["sqrt(2)/10"], ["sqrt(2)/5"]]));
+    checkTrue("discrete: the ratio of two irrational frequencies is rational (1/2) ...", ra.ratio !== null && ra.ratio.rational === true);
+    checkTrue("... but the sequence is still aperiodic (every f must be rational)", !ra.periodic && /EVERY frequency/.test(ra.reasons.join(" ")));
+    checkTrue("...whereas the same ratio in continuous time IS periodic", PE.analyze(peV("continuous", [["sqrt(2)/10"], ["sqrt(2)/5"]])).periodic);
+    ra = PE.analyze(peV("continuous", [["1"], ["sqrt(2)"]]));
+    checkTrue("an aperiodic result has no fundamental period (null)", ra.fundamental === null);
+    checkTrue("...and no plot period", lastPlot({ set: PE.buildPlots(peV("continuous", [["1"], ["sqrt(2)"]]), ra) }).period === null);
+
+    section("Periodicity: the step-by-step explanation");
+    ra = PE.analyze(peV("continuous", [["1"], ["2"]]));
+    checkText("the steps start with the signal", ra.steps[0].title, "Write the signal");
+    checkText("sin(2πt) + sin(4πt) is written out", ra.steps[0].lines[0], "x(t) = sin(2πt) + sin(2π·2·t)");
+    checkTrue("f1 = 1 Hz is stated", ra.reasons.indexOf("f₁ = 1 Hz.") !== -1);
+    checkTrue("f2 = 2 Hz is stated", ra.reasons.indexOf("f₂ = 2 Hz.") !== -1);
+    checkTrue("the individual periods are stated", ra.reasons.indexOf("T₁ = 1/|f₁| = 1 s") !== -1 && ra.reasons.indexOf("T₂ = 1/|f₂| = 1/2 s") !== -1);
+    checkTrue("the ratio 1/2 is stated and called rational", ra.reasons.indexOf("f₁/f₂ = 1/2 (rational)") !== -1);
+    checkTrue("the common fundamental period T0 = 1 s is stated", ra.reasons.indexOf("T₀ = 1/f₀ = 1 s.") !== -1);
+    checkTrue("the check counts the cycles in T0", /x₁ completes 1 cycle, x₂ completes 2 cycles/.test(ra.reasons.join(" ")));
+    checkTrue("every step has a title and at least one line", ra.steps.every(function (st) { return st.title.length > 3 && st.lines.length >= 1; }));
+    ra = PE.analyze(peV("continuous", [["1"], ["pi"]]));
+    checkTrue("aperiodic steps explain why no common period exists", ra.steps.some(function (st) { return st.title === "Why no common period exists"; }));
+    checkTrue("...and say there is no fundamental period", /no fundamental period/.test(ra.reasons.join(" ")));
+    ra = PE.analyze(peV("continuous", [["3/4"]]));
+    checkTrue("a single signal's steps apply T0 = 1/|f|", ra.reasons.join(" ").indexOf("T₀ = 1/(3/4) = 4/3 s") !== -1);
+    ra = PE.analyze(peV("continuous", [["-2"]]));
+    checkTrue("a negative frequency step says only |f| matters", /Only \|f\| = 2 Hz matters/.test(ra.reasons.join(" ")));
+    ra = PE.analyze(peV("continuous", [["0"]]));
+    checkTrue("a zero frequency step says it is a constant", /constant/.test(ra.reasons.join(" ")));
+    ra = PE.analyze(peV("discrete", [["3/8"]]));
+    checkTrue("discrete single: p and q are shown", /p = 3 and q = 8/.test(ra.reasons.join(" ")));
+    checkTrue("discrete single: N0 = q = 8", /N₀ = 8 samples/.test(ra.reasons.join(" ")));
+    ra = PE.analyze(peV("discrete", [["1/4"], ["1/6"]]));
+    checkTrue("discrete sum: N0 = lcm(N1, N2) = lcm(4, 6) = 12", /lcm\(N₁, N₂\) = lcm\(4, 6\) = 12 samples/.test(ra.reasons.join(" ")));
+    checkTrue("discrete sum: the cycles in N0 are counted", /x₁ completes 3 cycles, x₂ completes 2 cycles/.test(ra.reasons.join(" ")));
+    ra = PE.analyze(peV("discrete", [["sqrt(2)/10"]]));
+    checkTrue("discrete aperiodic: the steps say f is irrational and not p/q", /cannot be written as p\/q/.test(ra.reasons.join(" ")) && /APERIODIC/.test(ra.reasons.join(" ")));
+
+    section("Periodicity: formatting");
+    checkText("formatFraction 6/3 style: whole number", PE.formatFraction(5n, 1n), "5");
+    checkText("formatFraction 3/4", PE.formatFraction(3n, 4n), "3/4");
+    checkText("formatNumber(0.5)", PE.formatNumber(0.5), "0.5");
+    checkText("formatNumber(0)", PE.formatNumber(0), "0");
+    checkText("formatNumber hides floating-point noise", PE.formatNumber(0.1 + 0.2), "0.3");
+
+    (function () {                                       // own scope: no name can clash with other stages
+    const CV = SignalLab.math.convolution;
+    function cvSeq(start, values) { return CV.makeSequence(start, values); }
+    function cvWithin(name, actual, expected, tolerance) {            // |actual - expected| <= tolerance
+      const ok = Math.abs(actual - expected) <= tolerance;
+      checkTrue(name + (ok ? "" : "  (got " + actual + ", expected " + expected + ", tolerance " + tolerance + ")"), ok);
+    }
+    function cvArray(name, actual, expected, tolerance) {             // same length, every value within tolerance
+      let worst = actual.length === expected.length ? 0 : Infinity;
+      for (let i = 0; i < expected.length && worst !== Infinity; i++) { worst = Math.max(worst, Math.abs(actual[i] - expected[i])); }
+      checkTrue(name + (worst <= (tolerance || 1e-9) ? "" : "  (largest difference " + worst + ", lengths " + actual.length + " vs " + expected.length + ")"), worst <= (tolerance || 1e-9));
+    }
+    function cvPulse(A, start, end) { return { type: "pulse", amplitude: A, frequency: null, start: start, end: end }; }
+    function cvWave(type, A, f, start, end) { return { type: type, amplitude: A, frequency: f, start: start, end: end }; }
+    let cvSeed = 12345;                                                // repeatable "random" numbers
+    function cvRandom() { cvSeed = (cvSeed * 1664525 + 1013904223) % 4294967296; return cvSeed / 4294967296; }
+
+    section("Convolution (discrete): known answers, checked by hand");
+    let r1 = CV.convolveDiscrete(cvSeq(0, [1, 2, 3]), cvSeq(0, [1, 1]));
+    cvArray("[1,2,3] * [1,1] = [1,3,5,3]", r1.values, [1, 3, 5, 3]);
+    check("  ...starts at n = 0", r1.start, 0);
+    cvArray("[1,2,3,4] * [1,1,1] = [1,3,6,9,7,4]", CV.convolveDiscrete(cvSeq(0, [1, 2, 3, 4]), cvSeq(0, [1, 1, 1])).values, [1, 3, 6, 9, 7, 4]);
+    cvArray("[1,2,3] * [0,1,0.5] = [0,1,2.5,4,1.5]", CV.convolveDiscrete(cvSeq(0, [1, 2, 3]), cvSeq(0, [0, 1, 0.5])).values, [0, 1, 2.5, 4, 1.5]);
+    cvArray("[1,-1] * [1,2,3] = [1,1,1,-3] (negative values)", CV.convolveDiscrete(cvSeq(0, [1, -1]), cvSeq(0, [1, 2, 3])).values, [1, 1, 1, -3]);
+    cvArray("[1,-2,3] * [2,-1] = [2,-5,8,-3]", CV.convolveDiscrete(cvSeq(0, [1, -2, 3]), cvSeq(0, [2, -1])).values, [2, -5, 8, -3]);
+    cvArray("[-1,-2] * [-3,-4] = [3,10,8] (negative * negative)", CV.convolveDiscrete(cvSeq(0, [-1, -2]), cvSeq(0, [-3, -4])).values, [3, 10, 8]);
+    cvArray("[3] * [4] = [12] (one value each)", CV.convolveDiscrete(cvSeq(0, [3]), cvSeq(0, [4])).values, [12]);
+    cvArray("[0.5, 0.25] * [2, 4] = [1, 2.5, 1] (decimals: 0.5*4 + 0.25*2 = 2.5)", CV.convolveDiscrete(cvSeq(0, [0.5, 0.25]), cvSeq(0, [2, 4])).values, [1, 2.5, 1]);
+    cvArray("rectangle * rectangle: [1,1,1] * [1,1,1] = [1,2,3,2,1]", CV.convolveDiscrete(cvSeq(0, [1, 1, 1]), cvSeq(0, [1, 1, 1])).values, [1, 2, 3, 2, 1]);
+    cvArray("rectangle * rectangle (4 and 4): a triangle 1,2,3,4,3,2,1", CV.convolveDiscrete(cvSeq(0, [1, 1, 1, 1]), cvSeq(0, [1, 1, 1, 1])).values, [1, 2, 3, 4, 3, 2, 1]);
+    cvArray("polynomials: (1+x)^2 = 1 + 2x + x^2", CV.convolveDiscrete(cvSeq(0, [1, 1]), cvSeq(0, [1, 1])).values, [1, 2, 1]);
+    cvArray("polynomials: (1+x)^3 = 1 + 3x + 3x^2 + x^3", CV.convolveDiscrete(cvSeq(0, [1, 1]), CV.convolveDiscrete(cvSeq(0, [1, 1]), cvSeq(0, [1, 1]))).values, [1, 3, 3, 1]);
+    cvArray("a long one with a zero inside: [1,0,2] * [3,4] = [3,4,6,8]", CV.convolveDiscrete(cvSeq(0, [1, 0, 2]), cvSeq(0, [3, 4])).values, [3, 4, 6, 8]);
+
+    section("Convolution (discrete): impulses");
+    const xImp = cvSeq(-3, [1, 2, 3]);
+    let rImp = CV.convolveDiscrete(xImp, cvSeq(0, [1]));
+    cvArray("x * delta[n] = x (values)", rImp.values, [1, 2, 3]);
+    check("x * delta[n] = x (start index stays -3)", rImp.start, -3);
+    rImp = CV.convolveDiscrete(cvSeq(0, [1]), xImp);
+    cvArray("delta[n] * x = x", rImp.values, [1, 2, 3]);
+    rImp = CV.convolveDiscrete(xImp, cvSeq(2, [1]));
+    cvArray("x * delta[n-2] = x delayed by 2 (values)", rImp.values, [1, 2, 3]);
+    check("x * delta[n-2]: start index moves from -3 to -1", rImp.start, -1);
+    rImp = CV.convolveDiscrete(xImp, cvSeq(-3, [1]));
+    check("x * delta[n+3] = x advanced by 3 (start -6)", rImp.start, -6);
+    cvArray("x * (2 delta[n]) = 2x", CV.convolveDiscrete(xImp, cvSeq(0, [2])).values, [2, 4, 6]);
+    rImp = CV.convolveDiscrete(cvSeq(0, [1, 2, 3]), cvSeq(0, [1, 0, 1]));
+    cvArray("x * (delta[n] + delta[n-2]): y[n] = x[n] + x[n-2] = [1,2,4,2,3]", rImp.values, [1, 2, 4, 2, 3]);
+
+    section("Convolution (discrete): start indices and output indices");
+    const xs = cvSeq(-2, [1, 2]), hs = cvSeq(3, [1, 1, 1]);
+    let rs = CV.convolveDiscrete(xs, hs);
+    check("x starts at -2, h starts at 3: y starts at 1", rs.start, 1);
+    cvArray("  ...values [1,3,3,2]", rs.values, [1, 3, 3, 2]);
+    check("  ...last index is end(x) + end(h) = -1 + 5 = 4", CV.getSequenceEnd(rs), 4);
+    rs = CV.convolveDiscrete(cvSeq(-5, [1, 1]), cvSeq(-4, [1, 1]));
+    check("both starts negative (-5 and -4): y starts at -9", rs.start, -9);
+    cvArray("  ...values [1,2,1]", rs.values, [1, 2, 1]);
+    const t3 = CV.getConvolutionTerms(xs, hs, 2);
+    cvArray("terms of y[2]: k = -2 and k = -1", t3.terms.map(function (t) { return t.k; }), [-2, -1]);
+    cvArray("  ...x[k] = 1, 2 and h[2-k] = h[4], h[3] = 1, 1", t3.terms.map(function (t) { return t.xk * 10 + t.hnk; }), [11, 21]);
+    cvArray("  ...h indices are n - k = 4 and 3", t3.terms.map(function (t) { return t.hIndex; }), [4, 3]);
+    check("  ...their sum is y[2] = 3", t3.sum, 3);
+    check("terms before the output starts: n = 0 has no terms", CV.getConvolutionTerms(xs, hs, 0).terms.length, 0);
+    check("terms after the output ends: n = 5 has none, sum is 0", CV.getConvolutionTerms(xs, hs, 5).sum, 0);
+    check("x[k] is 0 outside its indices", CV.getSequenceValue(xs, 7), 0);
+    check("x[-2] is the first stored value", CV.getSequenceValue(xs, -2), 1);
+    checkTrue("asking for x[1.5] is an error (no interpolation)", throws(function () { CV.getSequenceValue(xs, 1.5); }));
+    checkTrue("an empty sequence is an error", throws(function () { CV.convolveDiscrete(cvSeq(0, []), xs); }));
+
+    section("Convolution (discrete): output length is N + M - 1");
+    let lengthProblems = 0, indexProblems = 0, pairs = 0;
+    for (let N = 1; N <= 7; N++) {
+      for (let M = 1; M <= 7; M++) {
+        [[0, 0], [-3, 2], [4, -6]].forEach(function (starts) {
+          const xv = [], hv = [];
+          for (let i = 0; i < N; i++) { xv.push(i + 1); }
+          for (let i = 0; i < M; i++) { hv.push(1 - i); }
+          const xq = cvSeq(starts[0], xv), hq = cvSeq(starts[1], hv), yq = CV.convolveDiscrete(xq, hq);
+          const shape = CV.checkOutputShape(xq, hq, yq);
+          pairs++;
+          if (yq.values.length !== N + M - 1 || !shape.ok) { lengthProblems++; }
+          if (yq.start !== starts[0] + starts[1] || CV.getSequenceEnd(yq) !== CV.getSequenceEnd(xq) + CV.getSequenceEnd(hq)) { indexProblems++; }
+        });
+      }
+    }
+    check("length = N + M - 1 for all " + pairs + " combinations (N, M = 1..7, three start pairs)", lengthProblems, 0);
+    check("first index = start(x)+start(h), last = end(x)+end(h) for all of them", indexProblems, 0);
+    checkTrue("checkOutputShape notices a wrong length", !CV.checkOutputShape(xs, hs, cvSeq(1, [1, 3, 3])).ok);
+    checkTrue("checkOutputShape notices a wrong start index", !CV.checkOutputShape(xs, hs, cvSeq(0, [1, 3, 3, 2])).ok);
+
+    section("Convolution (discrete): flip and shift");
+    const hf = cvSeq(0, [1, 2, 3]);
+    const flipped = CV.flipSequence(hf);
+    cvArray("flip [1,2,3]: values reversed", flipped.values, [3, 2, 1]);
+    check("flip: start index becomes -end = -2", flipped.start, -2);
+    let flipOk = true;
+    for (let k = -6; k <= 6; k++) { if (CV.getSequenceValue(flipped, k) !== CV.getSequenceValue(hf, -k)) { flipOk = false; } }
+    checkTrue("flipped[k] = h[-k] for every k from -6 to 6", flipOk);
+    cvArray("flipping twice gives the original", CV.flipSequence(flipped).values, [1, 2, 3]);
+    check("flipping twice restores the start index", CV.flipSequence(flipped).start, 0);
+    check("shift by 4: start moves 0 -> 4", CV.shiftSequence(hf, 4).start, 4);
+    let slideOk = true;
+    [-5, -1, 0, 2, 7].forEach(function (n) {
+      [cvSeq(0, [1, 2, 3]), cvSeq(-2, [4, 5]), cvSeq(3, [1, -1, 2, 0.5])].forEach(function (seq) {
+        const sliding = CV.getFlippedShifted(seq, n);
+        for (let k = -15; k <= 15; k++) { if (CV.getSequenceValue(sliding, k) !== CV.getSequenceValue(seq, n - k)) { slideOk = false; } }
+      });
+    });
+    checkTrue("getFlippedShifted(h, n)[k] = h[n - k] for 5 values of n, 3 sequences, k = -15..15", slideOk);
+
+    section("Convolution (discrete): checked against an independent method and the laws of convolution");
+    function scatter(x, h) {                                           // a different way: every x[i]*h[j] lands on y[i+j]
+      const y = new Array(x.length + h.length - 1).fill(0);
+      for (let i = 0; i < x.length; i++) { for (let j = 0; j < h.length; j++) { y[i + j] += x[i] * h[j]; } }
+      return y;
+    }
+    function randomSequence() {
+      const n = 1 + Math.floor(cvRandom() * 8), v = [];
+      for (let i = 0; i < n; i++) { v.push(Math.round((cvRandom() * 10 - 5) * 4) / 4); }
+      return cvSeq(Math.floor(cvRandom() * 11) - 5, v);
+    }
+    let worstScatter = 0, worstComm = 0, worstSum = 0, worstAssoc = 0, worstScale = 0, termMismatch = 0, startBad = 0;
+    for (let trial = 0; trial < 200; trial++) {
+      const a = randomSequence(), b = randomSequence(), c = randomSequence();
+      const ab = CV.convolveDiscrete(a, b), ba = CV.convolveDiscrete(b, a);
+      const reference = scatter(a.values, b.values);
+      for (let i = 0; i < reference.length; i++) { worstScatter = Math.max(worstScatter, Math.abs(ab.values[i] - reference[i])); worstComm = Math.max(worstComm, Math.abs(ab.values[i] - ba.values[i])); }
+      if (ab.start !== a.start + b.start || ba.start !== ab.start) { startBad++; }
+      const sum = function (q) { return q.values.reduce(function (p, v) { return p + v; }, 0); };
+      worstSum = Math.max(worstSum, Math.abs(sum(ab) - sum(a) * sum(b)));
+      const left = CV.convolveDiscrete(ab, c), right = CV.convolveDiscrete(a, CV.convolveDiscrete(b, c));
+      for (let i = 0; i < left.values.length; i++) { worstAssoc = Math.max(worstAssoc, Math.abs(left.values[i] - right.values[i])); }
+      if (left.start !== right.start) { startBad++; }
+      const scaled = CV.convolveDiscrete(cvSeq(a.start, a.values.map(function (v) { return 3 * v; })), b);
+      for (let i = 0; i < ab.values.length; i++) { worstScale = Math.max(worstScale, Math.abs(scaled.values[i] - 3 * ab.values[i])); }
+      for (let i = 0; i < ab.values.length; i++) { if (CV.getConvolutionTerms(a, b, ab.start + i).sum !== ab.values[i]) { termMismatch++; } }
+    }
+    cvWithin("200 random pairs: gather method = independent scatter method", worstScatter, 0, 1e-9);
+    cvWithin("200 random pairs: commutative, x*h = h*x", worstComm, 0, 1e-9);
+    cvWithin("200 random pairs: associative, (x*h)*g = x*(h*g)", worstAssoc, 0, 1e-8);
+    cvWithin("200 random pairs: sum of y = (sum of x)(sum of h)", worstSum, 0, 1e-8);
+    cvWithin("200 random pairs: scaling, (3x)*h = 3(x*h)", worstScale, 0, 1e-9);
+    check("200 random pairs: per-sample term sums equal the output exactly", termMismatch, 0);
+    check("200 random pairs: start index always start(x)+start(h) (also for the product of three)", startBad, 0);
+    const dA = cvSeq(1, [1, 2, 3]), dB = cvSeq(-1, [2, -1]), dC = cvSeq(-1, [0.5, 4]);
+    cvArray("distributive: x*(h+g) = x*h + x*g", CV.convolveDiscrete(dA, cvSeq(-1, [2.5, 3])).values,
+            CV.convolveDiscrete(dA, dB).values.map(function (v, i) { return v + CV.convolveDiscrete(dA, dC).values[i]; }));
+
+    section("Convolution (discrete): typing sequences");
+    cvArray("'1, 2, 3'", CV.parseSequence("1, 2, 3").values, [1, 2, 3]);
+    cvArray("'1 2 3' (spaces)", CV.parseSequence("1 2 3").values, [1, 2, 3]);
+    cvArray("'[1,2,3]' (brackets)", CV.parseSequence("[1,2,3]").values, [1, 2, 3]);
+    cvArray("'{1; 2; 3}' (semicolons)", CV.parseSequence("{1; 2; 3}").values, [1, 2, 3]);
+    cvArray("'1/2, -0.25, 3' (fraction, decimal, whole)", CV.parseSequence("1/2, -0.25, 3").values, [0.5, -0.25, 3]);
+    cvArray("'1, 2, 3,' (trailing comma is fine)", CV.parseSequence("1, 2, 3,").values, [1, 2, 3]);
+    cvArray("'  7  ' (a single value)", CV.parseSequence("  7  ").values, [7]);
+    checkTrue("'' is rejected", !CV.parseSequence("").ok);
+    checkTrue("'1,,2' is rejected (empty spot)", !CV.parseSequence("1,,2").ok);
+    checkTrue("',1' is rejected", !CV.parseSequence(",1").ok);
+    checkTrue("'1, x, 3' is rejected and names item 2", !CV.parseSequence("1, x, 3").ok && CV.parseSequence("1, x, 3").error.indexOf("Item 2") === 0);
+    checkTrue("'1/0' is rejected", !CV.parseSequence("1/0").ok);
+    checkTrue("'-' alone is rejected", !CV.parseSequence("-").ok);
+    checkTrue("20 values are accepted", CV.parseSequence("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20").ok);
+    checkTrue("21 values are rejected", !CV.parseSequence("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21").ok);
+    checkTrue("a value of 1001 is rejected", !CV.parseSequence("1001").ok);
+    const dGood = { xValues: "1, 2, 3", xStart: "0", hValues: "1, 1", hStart: "-1" };
+    const dv = CV.validateDiscreteInputs(dGood);
+    checkTrue("valid discrete inputs pass", dv.ok);
+    check("  ...x start is read as a number", dv.values.x.start, 0);
+    check("  ...h start -1 is read", dv.values.h.start, -1);
+    checkTrue("start index 1.5 is rejected", CV.validateDiscreteInputs(Object.assign({}, dGood, { xStart: "1.5" })).errors.xStart !== undefined);
+    checkTrue("start index 'abc' is rejected", CV.validateDiscreteInputs(Object.assign({}, dGood, { hStart: "abc" })).errors.hStart !== undefined);
+    checkTrue("start index empty is rejected", CV.validateDiscreteInputs(Object.assign({}, dGood, { hStart: "" })).errors.hStart !== undefined);
+    checkTrue("start index 51 is rejected", CV.validateDiscreteInputs(Object.assign({}, dGood, { xStart: "51" })).errors.xStart !== undefined);
+    checkTrue("start index -50 is accepted", CV.validateDiscreteInputs(Object.assign({}, dGood, { xStart: "-50" })).ok);
+    checkTrue("empty values are rejected", CV.validateDiscreteInputs(Object.assign({}, dGood, { xValues: "" })).errors.xValues !== undefined);
+    checkTrue("two bad boxes give two error messages", Object.keys(CV.validateDiscreteInputs({ xValues: "q", xStart: "1.5", hValues: "1", hStart: "0" }).errors).length === 2);
+
+    section("Convolution (discrete): the example buttons");
+    const presetExpected = {
+      "moving-sum": { start: 0, values: [1, 3, 6, 9, 7, 4] },
+      "impulse": { start: 0, values: [1, 2, 3] },
+      "delayed-impulse": { start: 2, values: [1, 2, 3] },
+      "rect-rect": { start: 0, values: [1, 2, 3, 4, 3, 2, 1] },
+      "negative": { start: 0, values: [2, -5, 8, -3] },
+      "nonzero-start": { start: 1, values: [1, 3, 3, 2] }
+    };
+    CV.DISCRETE_PRESETS.forEach(function (p) {
+      const v = CV.validateDiscreteInputs({ xValues: p.x.values, xStart: String(p.x.start), hValues: p.h.values, hStart: String(p.h.start) });
+      const y = v.ok ? CV.convolveDiscrete(v.values.x, v.values.h) : null;
+      checkTrue("preset '" + p.label + "' is valid and gives the expected output",
+                v.ok && y.start === presetExpected[p.id].start && y.values.length === presetExpected[p.id].values.length &&
+                y.values.every(function (val, i) { return Math.abs(val - presetExpected[p.id].values[i]) < 1e-9; }));
+    });
+
+    section("Convolution (continuous): the trapezoidal rule itself");
+    check("a straight line is integrated exactly: integral of 2x+1 on [0,1] = 2", CV.trapezoidUniform([1, 1.5, 2, 2.5, 3], 0.25), 2);
+    let sq = []; for (let i = 0; i <= 100; i++) { sq.push((i / 100) * (i / 100)); }
+    cvWithin("integral of x^2 on [0,1] with 100 slices = 1/3 + h^2/12*(f'(1)-f'(0)) (the exact trapezoid error)", CV.trapezoidUniform(sq, 0.01), 1 / 3 + (1e-4 / 12) * 2, 1e-12);
+    let sn = []; for (let i = 0; i <= 1000; i++) { sn.push(Math.sin(Math.PI * i / 1000)); }
+    cvWithin("integral of sin(pi x) on [0,1] with 1000 slices is about 2/pi", CV.trapezoidUniform(sn, 0.001), 2 / Math.PI, 1e-6);
+    check("a constant 3 over width 2 (4 slices) = 6", CV.trapezoidUniform([3, 3, 3, 3, 3], 0.5), 6);
+    check("a single point has no area", CV.trapezoidUniform([5], 0.1), 0);
+    check("uneven points: (0,0),(1,1),(3,1) -> 0.5 + 2 = 2.5", CV.trapezoidXY([0, 1, 3], [0, 1, 1]), 2.5);
+
+    section("Convolution (continuous): signals with a time range");
+    const evTimes = [-0.5, 0, 0.25, 1, 1.5];
+    cvArray("pulse A=2 on [0,1]: 0, 2, 2, 2, 0 (edges included)", CV.evaluateSignal(cvPulse(2, 0, 1), evTimes), [0, 2, 2, 2, 0]);
+    cvArray("sine A=2, f=1 on [0,1]: 0, 0, 2, 0, 0 at t = -0.5, 0, 0.25, 1, 1.5", CV.evaluateSignal(cvWave("sine", 2, 1, 0, 1), evTimes), [0, 0, 2, 0, 0]);
+    cvArray("cosine A=1 on [0,1]: 0, 1, 0, 1, 0", CV.evaluateSignal(cvWave("cosine", 1, 1, 0, 1), evTimes), [0, 1, 0, 1, 0], 1e-9);
+    cvArray("square A=3 on [0,1]: 0, 3, 3, 3(t=1 starts a new cycle), 0", CV.evaluateSignal(cvWave("square", 3, 1, 0, 1), evTimes), [0, 3, 3, 3, 0]);
+    check("a time just beyond the edge is outside: pulse at 1.000001 is 0", CV.evaluateSignal(cvPulse(2, 0, 1), [1.000001])[0], 0);
+    check("rounding noise at the edge stays inside: pulse at 1 + 1e-12 is 2", CV.evaluateSignal(cvPulse(2, 0, 1), [1 + 1e-12])[0], 2);
+    check("negative amplitude: pulse -2 gives -2", CV.evaluateSignal(cvPulse(-2, 0, 1), [0.5])[0], -2);
+    const wc = CV.makeWindowedCurve(cvPulse(2, 0, 1), -1, 2);
+    cvArray("curve of a pulse has exact vertical edges: t = -1,0,0,1,1,2", wc.t, [-1, 0, 0, 1, 1, 2]);
+    cvArray("  ...with values 0,0,2,2,0,0", wc.y, [0, 0, 2, 2, 0, 0]);
+    const wide = CV.makeWindowedCurve(cvWave("sine", 1, 1, 0, 1), -1, 2);
+    check("curve of a sine starts at the plot edge", wide.t[0], -1);
+    check("curve of a sine ends at the plot edge", wide.t[wide.t.length - 1], 2);
+    checkTrue("curve of a sine is dense (more than 400 points)", wide.t.length > 400);
+
+    section("Convolution (continuous): integration limits and overlap");
+    const xl = cvPulse(1, 0, 1), hl = cvPulse(1, 0, 2);
+    let lim = CV.getIntegrationLimits(xl, hl, 1.5);
+    cvArray("t = 1.5: integrate tau from 0 to 1", [lim.lo, lim.hi], [0, 1]);
+    lim = CV.getIntegrationLimits(xl, hl, 2.5);
+    cvArray("t = 2.5: integrate tau from 0.5 to 1", [lim.lo, lim.hi], [0.5, 1]);
+    lim = CV.getIntegrationLimits(xl, hl, 0.5);
+    cvArray("t = 0.5: integrate tau from 0 to 0.5", [lim.lo, lim.hi], [0, 0.5]);
+    check("t = -1 (before the overlap): no area, y = 0", CV.getIntegrand(xl, hl, -1, 0.02).value, 0);
+    check("t = 5 (after the overlap): no area, y = 0", CV.getIntegrand(xl, hl, 5, 0.02).value, 0);
+    check("  ...and zero slices are used", CV.getIntegrand(xl, hl, 5, 0.02).intervals, 0);
+    check("t = 3 (only touching): y = 0", CV.getIntegrand(xl, hl, 3, 0.02).value, 0);
+
+    section("Convolution (continuous): pulses give exact shapes");
+    let triOk = 0, triPoints = 0;
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 10;
+      triPoints++;
+      if (Math.abs(CV.convolveAt(cvPulse(1, 0, 1), cvPulse(1, 0, 1), t, 0.02) - Math.min(t, 2 - t)) < 1e-9) { triOk++; }
+    }
+    check("pulse * pulse is a triangle: y(t) = min(t, 2 - t) at all " + triPoints + " points", triOk, triPoints);
+    let trapOk = 0, trapPoints = 0;
+    for (let i = -2; i <= 32; i++) {
+      const t = i / 10;
+      let expected = 0; if (t > 0 && t <= 1) { expected = t; } else if (t > 1 && t <= 2) { expected = 1; } else if (t > 2 && t < 3) { expected = 3 - t; }
+      trapPoints++;
+      if (Math.abs(CV.convolveAt(xl, hl, t, 0.02) - expected) < 1e-9) { trapOk++; }
+    }
+    check("short pulse * long pulse is a trapezoid (rises, flat at 1, falls), " + trapPoints + " points", trapOk, trapPoints);
+    cvWithin("heights multiply: 2 * 3 gives a peak of 6", CV.convolveAt(cvPulse(2, 0, 1), cvPulse(3, 0, 1), 1, 0.02), 6, 1e-9);
+    cvWithin("negative * positive: -2 * 3 gives -6", CV.convolveAt(cvPulse(-2, 0, 1), cvPulse(3, 0, 1), 1, 0.02), -6, 1e-9);
+    cvWithin("negative * negative: -2 * -3 gives +6", CV.convolveAt(cvPulse(-2, 0, 1), cvPulse(-3, 0, 1), 1, 0.02), 6, 1e-9);
+    const xn = cvPulse(1, 2, 3), hn = cvPulse(1, -1, 0);
+    cvWithin("nonzero starts: x on [2,3], h on [-1,0]: peak 1 at t = 2", CV.convolveAt(xn, hn, 2, 0.02), 1, 1e-9);
+    cvWithin("  ...y(1) = 0 (start of the output, 2 + -1 = 1)", CV.convolveAt(xn, hn, 1, 0.02), 0, 1e-9);
+    cvWithin("  ...y(3) = 0 (end of the output, 3 + 0 = 3)", CV.convolveAt(xn, hn, 3, 0.02), 0, 1e-9);
+    cvWithin("  ...y(1.5) = 0.5", CV.convolveAt(xn, hn, 1.5, 0.02), 0.5, 1e-9);
+    let stepGap = 0;
+    [0.5, 0.1, 0.02, 0.002].forEach(function (st) { stepGap = Math.max(stepGap, Math.abs(CV.convolveAt(cvPulse(1, 0, 1), cvPulse(1, 0, 1), 0.7, st) - 0.7)); });
+    cvWithin("a constant integrand is exact for any step (0.5, 0.1, 0.02, 0.002)", stepGap, 0, 1e-9);
+    let shiftGap = 0;
+    [0.3, 1.1, 1.6, 2.4].forEach(function (t) { shiftGap = Math.max(shiftGap, Math.abs(CV.convolveAt(cvPulse(1, 2, 3), cvPulse(1, 0, 2), t + 2, 0.02) - CV.convolveAt(cvPulse(1, 0, 1), cvPulse(1, 0, 2), t, 0.02))); });
+    cvWithin("delaying x by 2 delays y by 2: y_new(t + 2) = y_old(t)", shiftGap, 0, 1e-9);
+    const impl = CV.convolveContinuous(cvPulse(1, 0, 1), cvPulse(1, 0, 1), 0.02);
+    check("the output axis starts at start(x) + start(h) = 0", impl.t[0], 0);
+    check("the output axis ends at end(x) + end(h) = 2", impl.t[impl.t.length - 1], 2);
+    cvWithin("y is 0 at the first output time", impl.y[0], 0, 1e-9);
+    cvWithin("y is 0 at the last output time", impl.y[impl.y.length - 1], 0, 1e-9);
+    checkTrue("the output has at least 301 points even with a coarse step", CV.convolveContinuous(cvPulse(1, 0, 1), cvPulse(1, 0, 1), 0.5).t.length >= 301);
+    const xOut = CV.getOutputAxis(cvPulse(1, 2, 3), cvPulse(1, -1, 0), 0.02);
+    cvArray("output axis for x on [2,3], h on [-1,0] runs from 1 to 3", [xOut[0], xOut[xOut.length - 1]], [1, 3]);
+
+    section("Convolution (continuous): accuracy against exact answers");
+    function sinePulseExact(t) {                                       // x = sin(2 pi t) on [0,1], h = pulse of height 1 on [0,0.5]
+      if (t < 0 || t > 1.5) { return 0; }
+      if (t <= 0.5) { return (1 - Math.cos(2 * Math.PI * t)) / (2 * Math.PI); }
+      if (t <= 1) { return -Math.cos(2 * Math.PI * t) / Math.PI; }
+      return (-Math.cos(2 * Math.PI * t) - 1) / (2 * Math.PI);
+    }
+    const sineX = cvWave("sine", 1, 1, 0, 1), halfPulse = cvPulse(1, 0, 0.5);
+    let worstSine = 0;
+    for (let i = 0; i <= 30; i++) { worstSine = Math.max(worstSine, Math.abs(CV.convolveAt(sineX, halfPulse, i / 20, 0.01) - sinePulseExact(i / 20))); }
+    cvWithin("sine * pulse at step 0.01: within 0.0002 of the exact answer at 31 times", worstSine, 0, 2e-4);
+    cvWithin("sine * pulse at t = 0.5 is about 1/pi", CV.convolveAt(sineX, halfPulse, 0.5, 0.005), 1 / Math.PI, 3e-5);
+    const errAt = function (step) { return Math.abs(CV.convolveAt(sineX, halfPulse, 0.5, step) - 1 / Math.PI); };
+    const e1 = errAt(0.1), e2 = errAt(0.05), e3 = errAt(0.025), e4 = errAt(0.0125);
+    checkTrue("halving the step cuts the error to about a quarter (ratios " + (e1 / e2).toFixed(2) + ", " + (e2 / e3).toFixed(2) + ", " + (e3 / e4).toFixed(2) + ")",
+              e1 / e2 > 3.8 && e1 / e2 < 4.2 && e2 / e3 > 3.8 && e2 / e3 < 4.2 && e3 / e4 > 3.8 && e3 / e4 < 4.2);
+    cvWithin("the error matches the theory h^2/12 (f'(b) - f'(a)) = (0.05^2/12)(-4 pi) at step 0.05",
+             CV.convolveAt(sineX, halfPulse, 0.5, 0.05) - 1 / Math.PI, (0.05 * 0.05 / 12) * (-4 * Math.PI), 1e-5);
+    const cosX = cvWave("cosine", 1, 1, 0, 1);
+    let worstCos = 0;
+    for (let i = 0; i <= 10; i++) { const t = i / 10; worstCos = Math.max(worstCos, Math.abs(CV.convolveAt(cosX, cosX, t, 0.01) - (0.5 * t * Math.cos(2 * Math.PI * t) + Math.sin(2 * Math.PI * t) / (4 * Math.PI)))); }
+    cvWithin("cosine * cosine on [0,1]: y = t cos(2 pi t)/2 + sin(2 pi t)/(4 pi), within 0.0003", worstCos, 0, 3e-4);
+    cvWithin("  ...y(1) = 0.5", CV.convolveAt(cosX, cosX, 1, 0.005), 0.5, 2e-4);
+    cvWithin("  ...y(0.5) = -0.25", CV.convolveAt(cosX, cosX, 0.5, 0.005), -0.25, 2e-4);
+    cvWithin("  ...symmetric about t = 1: y(0.3) = y(1.7)", CV.convolveAt(cosX, cosX, 0.3, 0.01), CV.convolveAt(cosX, cosX, 1.7, 0.01), 1e-9);
+    let worstImpulse = 0;
+    const nearImpulse = cvPulse(50, 0, 0.02), sine2 = cvWave("sine", 1, 1, 0, 2);
+    for (let i = 4; i <= 38; i++) { const t = i / 20; worstImpulse = Math.max(worstImpulse, Math.abs(CV.convolveAt(sine2, nearImpulse, t, 0.005) - Math.sin(2 * Math.PI * (t - 0.01)))); }
+    cvWithin("a narrow pulse of area 1 acts like an impulse: y(t) is about x(t - 0.01) (within 0.002)", worstImpulse, 0, 2e-3);
+
+    section("Convolution (continuous): laws of convolution");
+    const lawA = cvWave("sine", 1.5, 2, 0, 1.5), lawB = cvPulse(2, 0.5, 1.2);
+    let worstCommC = 0;
+    [0.7, 1.3, 1.9, 2.4].forEach(function (t) { worstCommC = Math.max(worstCommC, Math.abs(CV.convolveAt(lawA, lawB, t, 0.01) - CV.convolveAt(lawB, lawA, t, 0.01))); });
+    cvWithin("commutative: x*h = h*x (sine and pulse, 4 times)", worstCommC, 0, 1e-9);
+    cvWithin("scaling: (3x)*h = 3(x*h)", CV.convolveAt(cvWave("sine", 4.5, 2, 0, 1.5), lawB, 1.3, 0.01), 3 * CV.convolveAt(lawA, lawB, 1.3, 0.01), 1e-9);
+    const areaP = CV.getAreaCheck(cvPulse(2, 0, 1), cvPulse(3, 0, 2), CV.convolveContinuous(cvPulse(2, 0, 1), cvPulse(3, 0, 2), 0.02));
+    cvWithin("area of y = (area of x)(area of h) = 2 * 6 = 12 for two pulses", areaP.areaY, 12, 1e-3);
+    check("  ...the product of the areas is exactly 12", areaP.areaXTimesH, 12);
+    const areaS = CV.getAreaCheck(sineX, halfPulse, CV.convolveContinuous(sineX, halfPulse, 0.01));
+    cvWithin("area check for sine * pulse (the sine has net area 0): the relative difference is small", areaS.relativeDifference, 0, 1e-3);
+    const areaH = CV.getAreaCheck(cvWave("sine", 1, 0.5, 0, 1), cvPulse(1, 0, 1), CV.convolveContinuous(cvWave("sine", 1, 0.5, 0, 1), cvPulse(1, 0, 1), 0.01));
+    cvWithin("area check for a half sine * pulse: (1/pi)*2... y area = (area x)(area h)", areaH.areaY, areaH.areaXTimesH, 2e-3);
+
+    section("Convolution (continuous): the numbers behind one y(t)");
+    const ig = CV.getIntegrand(sineX, halfPulse, 0.75, 0.01);
+    check("limits at t = 0.75: lo = 0.25", ig.lo, 0.25);
+    check("  ...hi = 0.75", ig.hi, 0.75);
+    check("  ...(0.75 - 0.25) / 0.01 = 50 slices", ig.intervals, 50);
+    check("  ...first point is lo", ig.tau[0], 0.25);
+    check("  ...last point is hi exactly", ig.tau[ig.tau.length - 1], 0.75);
+    check("  ...51 points for 50 slices", ig.tau.length, 51);
+    cvWithin("  ...slice width 0.01", ig.step, 0.01, 1e-12);
+    cvWithin("  ...the value is the trapezoidal sum of the products", ig.value, CV.trapezoidUniform(ig.product, ig.step), 1e-15);
+    let prodOk = true, flipOk2 = true;
+    for (let j = 0; j < ig.tau.length; j++) {
+      if (Math.abs(ig.product[j] - ig.xTau[j] * ig.hFlipped[j]) > 1e-15) { prodOk = false; }
+      if (Math.abs(ig.hFlipped[j] - CV.evaluateSignal(halfPulse, [0.75 - ig.tau[j]])[0]) > 1e-15) { flipOk2 = false; }
+    }
+    checkTrue("every product = x(tau) * h(t - tau)", prodOk);
+    checkTrue("h is read at t - tau at every point (that is the flip and shift)", flipOk2);
+    const ig2 = CV.getIntegrand(cvPulse(1, 0, 1), cvPulse(1, 0, 1), 0.5, 0.3);
+    check("a step bigger than the interval still uses 1 slice at least: 0.5 / 0.3 -> 2 slices", ig2.intervals, 2);
+    checkTrue("  ...and the real slice width (0.25) is not bigger than the step", ig2.step <= 0.3);
+    const tab = CV.getAccuracyTable(sineX, halfPulse, 0.5, 0.1);
+    cvArray("accuracy table uses the step, half and a quarter", tab.map(function (r) { return r.step; }), [0.1, 0.05, 0.025]);
+    cvArray("  ...with 5, 10 and 20 slices", tab.map(function (r) { return r.intervals; }), [5, 10, 20]);
+    checkTrue("  ...and the values get closer to 1/pi", Math.abs(tab[0].value - 1 / Math.PI) > Math.abs(tab[1].value - 1 / Math.PI) && Math.abs(tab[1].value - 1 / Math.PI) > Math.abs(tab[2].value - 1 / Math.PI));
+    const resultC = CV.convolveContinuous(sineX, halfPulse, 0.02);
+    let sameAsPoint = 0;
+    for (let i = 0; i < resultC.t.length; i += 25) { sameAsPoint = Math.max(sameAsPoint, Math.abs(resultC.y[i] - CV.getIntegrand(sineX, halfPulse, resultC.t[i], 0.02).value)); }
+    cvWithin("the full curve and the single-point step view give the same y(t)", sameAsPoint, 0, 0);
+
+    section("Convolution (continuous): data for the plots");
+    const flipCurve = CV.makeFlippedShiftedCurve(cvPulse(1, 0, 1), 3, 0, 5);
+    cvArray("h = pulse on [0,1] at t = 3: curve times are 0,2,2,3,3,5 (nonzero on [2,3])", flipCurve.t, [0, 2, 2, 3, 3, 5]);
+    cvArray("  ...values 0,0,1,1,0,0", flipCurve.y, [0, 0, 1, 1, 0, 0]);
+    const ramp = cvWave("sine", 1, 0.25, 0, 1);                           // rises from 0 to 1 on [0,1]
+    const flippedRamp = CV.makeFlippedShiftedCurve(ramp, 1, 0, 1);
+    check("flip: h(1 - tau) at tau = 0 is h(1) = 1 (the end of the rise)", flippedRamp.y[0], 1);
+    check("flip: h(1 - tau) at tau = 1 is h(0) = 0 (the start of the rise)", flippedRamp.y[flippedRamp.y.length - 1], 0);
+    checkTrue("flip: the sliding curve times increase", flippedRamp.t.every(function (v, i, a) { return i === 0 || v >= a[i - 1]; }));
+    const pc = CV.makeProductCurve(sineX, halfPulse, 0.75, -1, 2);
+    check("product curve is 0 at the plot edge", pc.y[0], 0);
+    let prodCurveOk = true;
+    for (let i = 2; i < pc.t.length - 2; i++) {                         // the dense points (the first and last two are the zero edges)
+      const expected = CV.evaluateSignal(sineX, [pc.t[i]])[0] * CV.evaluateSignal(halfPulse, [0.75 - pc.t[i]])[0];
+      if (Math.abs(pc.y[i] - expected) > 1e-9) { prodCurveOk = false; }
+    }
+    checkTrue("product curve = x(tau) h(t - tau) at every dense point (301 of them)", prodCurveOk && pc.t.length === 305);
+    cvArray("  ...and 0 at the plot edges and on both sides of the overlap (vertical edges)", [pc.y[0], pc.y[1], pc.y[pc.y.length - 2], pc.y[pc.y.length - 1]], [0, 0, 0, 0]);
+    cvArray("  ...the overlap runs from tau = 0.25 to 0.75", [pc.t[1], pc.t[pc.t.length - 2]], [0.25, 0.75]);
+    cvArray("no overlap: the product curve is 0 across the plot", CV.makeProductCurve(sineX, halfPulse, 5, -1, 2).y, [0, 0]);
+    let windowsOk = true;
+    [[cvPulse(1, 0, 1), cvPulse(1, 0, 2)], [cvPulse(1, 2, 3), cvPulse(1, -1, 0)], [sineX, cvPulse(1, -3, -2.5)]].forEach(function (pair) {
+      const w = CV.getContinuousWindows(pair[0], pair[1]);
+      [w.outputStart, w.outputEnd].forEach(function (t) {
+        const low = t - pair[1].end, high = t - pair[1].start;          // where the sliding h lives at the two extremes
+        if (low < w.slide[0] || high > w.slide[1]) { windowsOk = false; }
+      });
+      [pair[0].start, pair[0].end, pair[1].start, pair[1].end, w.outputStart, w.outputEnd].forEach(function (v) { if (v < w.signals[0] || v > w.signals[1]) { windowsOk = false; } });
+    });
+    checkTrue("the plot windows contain every signal, the output and the sliding h at its extremes", windowsOk);
+    let dWindowsOk = true;
+    [[cvSeq(0, [1, 2, 3]), cvSeq(0, [1, 1])], [cvSeq(-2, [1, 2]), cvSeq(3, [1, 1, 1])]].forEach(function (pair) {
+      const w = CV.getDiscreteWindows(pair[0], pair[1]);
+      const y = CV.convolveDiscrete(pair[0], pair[1]);
+      for (let i = 0; i < y.values.length; i++) {
+        const sliding = CV.getFlippedShifted(pair[1], y.start + i);
+        if (sliding.start < w.slide[0] || CV.getSequenceEnd(sliding) > w.slide[1]) { dWindowsOk = false; }
+      }
+      if (y.start < w.signals[0] || CV.getSequenceEnd(y) > w.signals[1]) { dWindowsOk = false; }
+    });
+    checkTrue("discrete windows contain the output and every flipped, shifted h", dWindowsOk);
+    check("findPeakIndex([0,1,3,2]) = 2", CV.findPeakIndex([0, 1, 3, 2]), 2);
+    check("findPeakIndex([0,-5,3]) = 1 (largest size, negative)", CV.findPeakIndex([0, -5, 3]), 1);
+    check("findPeakIndex picks the first of equal peaks", CV.findPeakIndex([1, 4, 4, 2]), 1);
+
+    section("Convolution (continuous): checking the typed values");
+    const cGood = { xType: "pulse", xAmplitude: "1", xFrequency: "1", xStart: "0", xEnd: "1",
+                    hType: "sine", hAmplitude: "2", hFrequency: "3", hStart: "-1", hEnd: "1", step: "0.02" };
+    function cErr(changes, key) { return CV.validateContinuousInputs(Object.assign({}, cGood, changes)).errors[key]; }
+    const cv = CV.validateContinuousInputs(cGood);
+    checkTrue("valid continuous inputs pass", cv.ok);
+    check("  ...h amplitude is read as 2", cv.values.h.amplitude, 2);
+    check("  ...step is read as 0.02", cv.values.step, 0.02);
+    checkTrue("amplitude 0 is rejected", cErr({ xAmplitude: "0" }, "xAmplitude") !== undefined);
+    checkTrue("negative amplitude is allowed (a negative pulse)", cErr({ xAmplitude: "-2" }, "xAmplitude") === undefined);
+    checkTrue("amplitude 101 is rejected", cErr({ hAmplitude: "101" }, "hAmplitude") !== undefined);
+    checkTrue("empty amplitude is rejected", cErr({ hAmplitude: "" }, "hAmplitude") !== undefined);
+    checkTrue("text amplitude is rejected", cErr({ hAmplitude: "big" }, "hAmplitude") !== undefined);
+    checkTrue("a pulse ignores its frequency box (even with junk in it)", cErr({ xFrequency: "junk" }, "xFrequency") === undefined);
+    checkTrue("a sine checks its frequency: 0 is rejected", cErr({ hFrequency: "0" }, "hFrequency") !== undefined);
+    checkTrue("a sine checks its frequency: 51 is rejected", cErr({ hFrequency: "51" }, "hFrequency") !== undefined);
+    checkTrue("too many cycles: 10 Hz over 20 s = 200 cycles is rejected", cErr({ hType: "sine", hFrequency: "10", hStart: "0", hEnd: "20" }, "hFrequency") !== undefined);
+    checkTrue("end <= start is rejected", cErr({ xStart: "1", xEnd: "1" }, "xEnd") !== undefined);
+    checkTrue("a range wider than 20 s is rejected", cErr({ xStart: "0", xEnd: "21" }, "xEnd") !== undefined);
+    checkTrue("a start beyond 100 is rejected", cErr({ xStart: "101", xEnd: "102" }, "xStart") !== undefined);
+    checkTrue("text time is rejected", cErr({ xEnd: "later" }, "xEnd") !== undefined);
+    checkTrue("a bad signal type is rejected", cErr({ xType: "ramp" }, "xType") !== undefined);
+    checkTrue("step 0.001 is too small", cErr({ step: "0.001" }, "step") !== undefined);
+    checkTrue("step 0.6 is too big", cErr({ step: "0.6" }, "step") !== undefined);
+    checkTrue("step 0.002 is allowed for short signals", cErr({ step: "0.002" }, "step") === undefined);
+    checkTrue("text step is rejected", cErr({ step: "fine" }, "step") !== undefined);
+    checkTrue("too much work is rejected (two 20 s pulses at step 0.002)", cErr({ xType: "pulse", xStart: "0", xEnd: "20", hType: "pulse", hStart: "0", hEnd: "20", step: "0.002" }, "step") !== undefined);
+    checkTrue("the same two 20 s pulses at step 0.05 are fine", cErr({ xType: "pulse", xStart: "0", xEnd: "20", hType: "pulse", hStart: "0", hEnd: "20", step: "0.05" }, "step") === undefined);
+    checkTrue("two bad boxes give two messages", Object.keys(CV.validateContinuousInputs(Object.assign({}, cGood, { xAmplitude: "0", step: "9" })).errors).length === 2);
+    const warnCoarse = CV.getContinuousWarnings(cvWave("sine", 1, 1, 0, 3), cvPulse(1, 0, 1), 0.2);
+    checkTrue("a coarse step for a 1 Hz sine (5 points per cycle) gives a warning", warnCoarse.some(function (w) { return w.indexOf("points per cycle") >= 0; }));
+    checkTrue("step 0.02 for the same sine gives no points-per-cycle warning", !CV.getContinuousWarnings(cvWave("sine", 1, 1, 0, 3), cvPulse(1, 0, 1), 0.02).some(function (w) { return w.indexOf("points per cycle") >= 0; }));
+    checkTrue("a step bigger than a quarter of the shorter signal gives a warning", CV.getContinuousWarnings(cvPulse(1, 0, 1), cvPulse(1, 0, 0.5), 0.2).length > 0);
+    checkTrue("a square wave gets a note about jumps", CV.getContinuousWarnings(cvWave("square", 1, 1, 0, 2), cvPulse(1, 0, 1), 0.02).some(function (w) { return w.indexOf("square") >= 0; }));
+    check("two pulses and a fine step: no warnings", CV.getContinuousWarnings(cvPulse(1, 0, 1), cvPulse(1, 0, 1), 0.02).length, 0);
+
+    section("Convolution (continuous): the example buttons");
+    CV.CONTINUOUS_PRESETS.forEach(function (p) {
+      const raw = { xType: p.x.type, xAmplitude: String(p.x.amplitude), xFrequency: String(p.x.frequency), xStart: String(p.x.start), xEnd: String(p.x.end),
+                    hType: p.h.type, hAmplitude: String(p.h.amplitude), hFrequency: String(p.h.frequency), hStart: String(p.h.start), hEnd: String(p.h.end), step: String(p.step) };
+      const v = CV.validateContinuousInputs(raw);
+      let ran = false, areaOk = false;
+      if (v.ok) { const res = CV.convolveContinuous(v.values.x, v.values.h, v.values.step); ran = res.y.length > 300; areaOk = CV.getAreaCheck(v.values.x, v.values.h, res).relativeDifference < 0.01; }
+      checkTrue("preset '" + p.label + "' is valid, runs, and passes the area check", v.ok && ran && areaOk);
+    });
+    const triP = CV.CONTINUOUS_PRESETS[0];
+    cvWithin("preset 'pulse * pulse' peaks at 1 when t = 1", CV.convolveAt(triP.x, triP.h, 1, triP.step), 1, 1e-9);
+
+    })();
+
+    document.getElementById("summary").innerHTML =
+      '<span class="pass">' + passed + " passed</span>, " +
+      '<span class="' + (failed ? "fail" : "pass") + '">' + failed + " failed</span>";
+  </script>
+</body>
+</html>

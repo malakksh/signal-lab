@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Signal Lab: Interactive Signals &amp; Systems Simulator</title>
+
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+  <div class="app">
+
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">∿</div>
+        <div class="brand-text">
+          <div class="brand-name">Signal Lab</div>
+          <div class="brand-sub">Signals &amp; Systems</div>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Modules">
+      <button class="nav-btn is-active" data-view="home" type="button"><span class="nav-icon" aria-hidden="true">⌂</span><span>Dashboard</span></button>
+      <button class="nav-btn" data-view="generator" type="button"><span class="nav-icon" aria-hidden="true">∿</span><span>Signal Generator</span></button>
+      <button class="nav-btn" data-view="operations" type="button"><span class="nav-icon" aria-hidden="true">±</span><span>Signal Operations</span></button>
+      <button class="nav-btn" data-view="evenodd" type="button"><span class="nav-icon" aria-hidden="true">⇋</span><span>Even &amp; Odd Decomposition</span></button>
+      <button class="nav-btn" data-view="periodicity" type="button"><span class="nav-icon" aria-hidden="true">↻</span><span>Periodicity Analyzer</span></button>
+      <button class="nav-btn" data-view="convolution" type="button"><span class="nav-icon" aria-hidden="true">∗</span><span>Convolution Simulator</span></button>
+      </nav>
+
+    </aside>
+
+    <main class="main">
+
+      <section class="view is-active" id="view-home" aria-labelledby="title-home">
+        <header class="view-header">
+          <div>
+            <h2 id="title-home">Signal Lab</h2>
+            <p class="lead">Explore how signals behave. Generate them, combine them, break them apart and convolve them. Pick a module to start.</p>
+          </div>
+        </header>
+
+        <div class="home-grid">
+      <button class="card module-card" data-view="generator" type="button">
+        <h3><span class="nav-icon" aria-hidden="true">∿</span> Signal Generator</h3>
+        <p>Create sine, cosine and square waves. Switch between continuous and discrete signals.</p>
+        <span class="formula">x(t) = A·sin(2πft + φ)</span>
+      </button>
+      <button class="card module-card" data-view="operations" type="button">
+        <h3><span class="nav-icon" aria-hidden="true">±</span> Signal Operations</h3>
+        <p>Add, subtract and multiply signals, then shift, scale or reverse time.</p>
+        <span class="formula">y(t) = x(t − t₀)</span>
+      </button>
+      <button class="card module-card" data-view="evenodd" type="button">
+        <h3><span class="nav-icon" aria-hidden="true">⇋</span> Even &amp; Odd Decomposition</h3>
+        <p>Split any signal into a symmetric part and an antisymmetric part.</p>
+        <span class="formula">xₑ(t) = [x(t) + x(−t)] / 2</span>
+      </button>
+      <button class="card module-card" data-view="periodicity" type="button">
+        <h3><span class="nav-icon" aria-hidden="true">↻</span> Periodicity Analyzer</h3>
+        <p>Find out whether a sum of sinusoids repeats, and when.</p>
+        <span class="formula">T = LCM(T₁, T₂)</span>
+      </button>
+      <button class="card module-card" data-view="convolution" type="button">
+        <h3><span class="nav-icon" aria-hidden="true">∗</span> Convolution Simulator</h3>
+        <p>Convolve signals in continuous time (a numerical integral) and in discrete time (exact sums), then calculate the convolution result.</p>
+        <span class="formula">y(t) = ∫ x(τ)·h(t−τ) dτ</span>
+        <span class="formula">y[n] = Σ x[k]·h[n−k]</span>
+      </button>
+        </div>
+      </section>
+
+    <section class="view" id="view-generator" aria-labelledby="title-generator">
+      <header class="view-header">
+        <div>
+          <h2 id="title-generator">Signal Generator</h2>
+          <p class="lead">Create sine, cosine and square waves. Switch between continuous and discrete signals.</p>
+        </div>
+      </header>
+
+      <div class="module-grid">
+        <div class="card">
+          <h3 class="card-title">Controls</h3>
+
+          <div id="generator-controls"><div class="placeholder">Controls for this module will appear here.</div></div>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Plot</h3>
+          <div id="generator-readout"></div>
+          <div id="generator-plot" class="plot-area"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-operations" aria-labelledby="title-operations">
+      <header class="view-header">
+        <div>
+          <h2 id="title-operations">Signal Operations</h2>
+          <p class="lead">Add, subtract and multiply signals, then shift, scale or reverse time.</p>
+        </div>
+      </header>
+
+      <div class="module-grid">
+        <div class="card">
+          <h3 class="card-title">Controls</h3>
+
+          <div id="operations-controls"><div class="placeholder">Controls for this module will appear here.</div></div>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Plot</h3>
+          <div id="operations-readout"></div>
+          <div id="operations-plot" class="plot-area"></div>
+          <div id="operations-plot-result" class="plot-area"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-evenodd" aria-labelledby="title-evenodd">
+      <header class="view-header">
+        <div>
+          <h2 id="title-evenodd">Even &amp; Odd Decomposition</h2>
+          <p class="lead">Split any signal into a symmetric part and an antisymmetric part.</p>
+        </div>
+      </header>
+
+      <div class="module-grid">
+        <div class="card">
+          <h3 class="card-title">Controls</h3>
+
+          <div id="evenodd-controls"><div class="placeholder">Controls for this module will appear here.</div></div>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Plot</h3>
+          <div id="evenodd-plot" class="plot-area"></div>
+          <div id="evenodd-plot-even" class="plot-area"></div>
+          <div id="evenodd-plot-odd" class="plot-area"></div>
+          <div id="evenodd-readout"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-periodicity" aria-labelledby="title-periodicity">
+      <header class="view-header">
+        <div>
+          <h2 id="title-periodicity">Periodicity Analyzer</h2>
+          <p class="lead">Analyze whether continuous and discrete signals repeat, and determine their period.</p>
+        </div>
+      </header>
+
+      <div class="module-grid">
+        <div class="card">
+          <h3 class="card-title">Controls</h3>
+
+          <div id="periodicity-controls"><div class="placeholder">Controls for this module will appear here.</div></div>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Analysis</h3>
+          <div id="periodicity-result"></div>
+          <div id="periodicity-plots"></div>
+          <div id="periodicity-plot-note"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="view" id="view-convolution" aria-labelledby="title-convolution">
+      <header class="view-header">
+        <div>
+          <h2 id="title-convolution">Convolution Simulator</h2>
+          <p class="lead">Calculate continuous and discrete convolution.</p>
+        </div>
+      </header>
+
+      <div class="module-grid">
+        <div class="card">
+          <h3 class="card-title">Controls</h3>
+
+          <div id="convolution-controls"><div class="placeholder">Controls for this module will appear here.</div></div>
+        </div>
+        <div class="card">
+          <h3 class="card-title">Signals and result</h3>
+          <div id="convolution-readout"></div>
+          <div id="convolution-plot-x" class="plot-area plot-compact"></div>
+          <div id="convolution-plot-h" class="plot-area plot-compact"></div>
+          <div id="convolution-plot-y" class="plot-area plot-compact"></div>
+        </div>
+      </div>
+
+      </section>
+
+    </main>
+  </div>
+
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+  <script src="js/core/namespace.js"></script>
+  <script src="js/core/signals.js"></script>
+  <script src="js/core/plotHelpers.js"></script>
+
+  <script src="js/modules/generator/generator.math.js"></script>
+  <script src="js/modules/generator/generator.ui.js"></script>
+  <script src="js/modules/operations/operations.math.js"></script>
+  <script src="js/modules/operations/operations.ui.js"></script>
+  <script src="js/modules/evenodd/evenodd.math.js"></script>
+  <script src="js/modules/evenodd/evenodd.ui.js"></script>
+  <script src="js/modules/periodicity/periodicity.math.js"></script>
+  <script src="js/modules/periodicity/periodicity.ui.js"></script>
+  <script src="js/modules/convolution/convolution.math.js"></script>
+  <script src="js/modules/convolution/convolution.ui.js"></script>
+
+  <script src="js/core/app.js"></script>
+</body>
+</html>
