@@ -14,6 +14,7 @@
 
     <aside class="sidebar">
       <div class="brand">
+        <!-- aria-hidden = true 3shan elscreenreader mat2rash el3alama deh ka mohtawa hya mogarad shakl yetshaf -->
         <div class="brand-mark" aria-hidden="true">∿</div>
         <div class="brand-text">
           <div class="brand-name">Signal Lab</div>
@@ -22,6 +23,7 @@
       </div>
 
       <nav class="nav" aria-label="Modules">
+        <!-- data-view = home dah attribute bastakhdmha 3shan akhazen data mortabeta blelement dah ya3ny elbutton dah mortabet blview elesmaha home b js button.dataset.view -->
       <button class="nav-btn is-active" data-view="home" type="button"><span class="nav-icon" aria-hidden="true">⌂</span><span>Dashboard</span></button>
       <button class="nav-btn" data-view="generator" type="button"><span class="nav-icon" aria-hidden="true">∿</span><span>Signal Generator</span></button>
       <button class="nav-btn" data-view="operations" type="button"><span class="nav-icon" aria-hidden="true">±</span><span>Signal Operations</span></button>
@@ -32,8 +34,11 @@
 
     </aside>
 
+    <!-- ============ MAIN AREA ============ -->
     <main class="main">
+      <!-- ===== Dashboard (home) ===== -->
 
+      <!-- aria-labelledby = title home elsection dah bystakhdem elelement(heading) elleeh id title-home ka label  -->
       <section class="view is-active" id="view-home" aria-labelledby="title-home">
         <header class="view-header">
           <div>
@@ -43,6 +48,7 @@
         </header>
 
         <div class="home-grid">
+          <!-- data-view = generator elcard mortabet bl generator view -->
       <button class="card module-card" data-view="generator" type="button">
         <h3><span class="nav-icon" aria-hidden="true">∿</span> Signal Generator</h3>
         <p>Create sine, cosine and square waves. Switch between continuous and discrete signals.</p>
@@ -72,6 +78,7 @@
         </div>
       </section>
 
+      <!-- ===== Signal Generator (Person 2) ===== -->
     <section class="view" id="view-generator" aria-labelledby="title-generator">
       <header class="view-header">
         <div>
@@ -83,7 +90,7 @@
       <div class="module-grid">
         <div class="card">
           <h3 class="card-title">Controls</h3>
-
+          <!-- Person 2: generator.ui.js fills this container -->
           <div id="generator-controls"><div class="placeholder">Controls for this module will appear here.</div></div>
         </div>
         <div class="card">
@@ -94,6 +101,7 @@
       </div>
     </section>
 
+    <!-- ===== Signal Operations (Person 3) ===== -->
     <section class="view" id="view-operations" aria-labelledby="title-operations">
       <header class="view-header">
         <div>
@@ -106,6 +114,7 @@
         <div class="card">
           <h3 class="card-title">Controls</h3>
 
+          <!-- Person 3: operations.ui.js fills this container -->
           <div id="operations-controls"><div class="placeholder">Controls for this module will appear here.</div></div>
         </div>
         <div class="card">
@@ -117,6 +126,7 @@
       </div>
     </section>
 
+    <!-- ===== Even &amp; Odd Decomposition (Person 4) ===== -->
     <section class="view" id="view-evenodd" aria-labelledby="title-evenodd">
       <header class="view-header">
         <div>
@@ -129,6 +139,7 @@
         <div class="card">
           <h3 class="card-title">Controls</h3>
 
+          <!-- Person 4: evenodd.ui.js fills this container -->
           <div id="evenodd-controls"><div class="placeholder">Controls for this module will appear here.</div></div>
         </div>
         <div class="card">
@@ -141,6 +152,7 @@
       </div>
     </section>
 
+    <!-- ===== Periodicity Analyzer (Person 5) ===== -->
     <section class="view" id="view-periodicity" aria-labelledby="title-periodicity">
       <header class="view-header">
         <div>
@@ -153,6 +165,7 @@
         <div class="card">
           <h3 class="card-title">Controls</h3>
 
+          <!-- Person 5: periodicity.ui.js fills this container -->
           <div id="periodicity-controls"><div class="placeholder">Controls for this module will appear here.</div></div>
         </div>
         <div class="card">
@@ -165,6 +178,7 @@
 
     </section>
 
+    <!-- ===== Convolution Simulator (Person 6) ===== -->
     <section class="view" id="view-convolution" aria-labelledby="title-convolution">
       <header class="view-header">
         <div>
@@ -177,6 +191,7 @@
         <div class="card">
           <h3 class="card-title">Controls</h3>
 
+          <!-- Person 6: convolution.ui.js fills this container -->
           <div id="convolution-controls"><div class="placeholder">Controls for this module will appear here.</div></div>
         </div>
         <div class="card">
